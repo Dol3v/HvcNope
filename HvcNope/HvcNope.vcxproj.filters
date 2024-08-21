@@ -18,7 +18,7 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="KOffsetManager.cpp">
+    <ClCompile Include="KernelBinary.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Resolves.cpp">
@@ -32,7 +32,7 @@
     <ClInclude Include="Types.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="KOffsetManager.h">
+    <ClInclude Include="KernelBinary.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Log.h">

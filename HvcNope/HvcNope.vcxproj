@@ -127,7 +127,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="KOffsetManager.cpp" />
+    <ClCompile Include="KernelBinary.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Resolves.cpp" />
   </ItemGroup>
@@ -136,7 +136,7 @@
     <ClInclude Include="Resolves.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="IKernelReadWrite.hpp" />
-    <ClInclude Include="KOffsetManager.h" />
+    <ClInclude Include="KernelBinary.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="Utils.h" />
