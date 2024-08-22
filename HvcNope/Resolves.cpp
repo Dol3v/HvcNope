@@ -24,10 +24,10 @@ kAddress TryResolveThreadListHead()
     auto processThreadList = currentProcess + cProcessThreadListHeadOffset;
 
     kAddress threadListEntry = kNullptr;
-    ForEveryListEntry(processThreadList,
+    Utils::ForEveryListEntry(processThreadList,
         [&](kAddress ThreadListEntry) {
             threadListEntry = ThreadListEntry;
-            return false; // stop loop immediately
+            return Utils::cStopLoop; // stop loop immediately
         });
 
     if (kNullptr == threadListEntry) {
@@ -55,6 +55,8 @@ kAddress Resolves::GetThreadAddress(Dword ThreadId)
     const Dword cThreadCidOffset        = 0x478;
 
     kAddress threadAddress = kNullptr;
+    using namespace Utils;
+
     ForEveryListElement(threadListHead, cThreadListEntryOffset,
         [&](kAddress Thread) {
             kAddress threadCid = Thread + cThreadCidOffset;

@@ -69,7 +69,7 @@ optional<const Byte*> FindSignatureInRegions(
 	return std::nullopt;
 }
 
-kAddress KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags)
+optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags)
 {
 
 	if (Flags & LocationFlags::InCode) 

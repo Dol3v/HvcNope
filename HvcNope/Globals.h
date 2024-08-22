@@ -1,7 +1,7 @@
 #pragma once
 
 #include "KernelBinary.h"
-#include "IKernelReadWrite.hpp"
+#include "KernelReadWrite.h"
 
 #include <memory>
 

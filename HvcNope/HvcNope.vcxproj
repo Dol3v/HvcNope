@@ -132,15 +132,17 @@
     <ClCompile Include="KernelBinary.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="Resolves.cpp" />
+    <ClCompile Include="Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ByteSignature.h" />
     <ClInclude Include="CallFunction.h" />
     <ClInclude Include="Resolves.h" />
     <ClInclude Include="Globals.h" />
-    <ClInclude Include="IKernelReadWrite.hpp" />
+    <ClInclude Include="KernelReadWrite.h" />
     <ClInclude Include="KernelBinary.h" />
     <ClInclude Include="Log.h" />
+    <ClInclude Include="Truesight.h" />
     <ClInclude Include="Types.h" />
     <ClInclude Include="Utils.h" />
   </ItemGroup>
