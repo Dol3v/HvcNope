@@ -3,11 +3,12 @@
 #include "Types.h"
 #include "ByteSignature.h"
 
-class KernelBinary {
+class KernelBinary 
+{
 public:
 	KernelBinary();
 
-	static kAddress GetKernelBase();
+	kAddress GetKernelBase();
 
 	kAddress ResolveExport(const char* ExportName) const;
 
@@ -38,7 +39,7 @@ private:
 	HMODULE m_MappedKernel;
 
 	// actual base address of loaded kernel
-	static kAddress s_KernelBase;
+	kAddress m_KernelBase;
 
 	//
 	// Sections in kernel binary

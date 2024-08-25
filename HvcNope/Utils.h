@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Types.h"
-
+#include "Globals.h"
 
 namespace Utils
 {

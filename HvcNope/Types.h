@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <optional>
+#include <span>
 
 typedef UINT64 Qword;
 typedef UINT32 Dword;
@@ -17,5 +18,3 @@ using std::optional;
 using ReadonlyRegion_t = std::span<const Byte>;
 
 constexpr kAddress kNullptr = 0;
-
-#include "Globals.h"

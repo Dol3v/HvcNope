@@ -40,7 +40,7 @@ namespace Sig
             bool match = true;
 
             for (size_t j = 0; j < sigSize; ++j) {
-                if (!Signature[j].IsWildcard && Buffer[i + j] != Signature[j].Val) {
+                if (!Signature[j].IsWildcard && Buffer[i + j] != Signature[j].Value) {
                     match = false;
                     break;
                 }

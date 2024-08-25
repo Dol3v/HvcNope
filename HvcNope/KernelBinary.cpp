@@ -26,7 +26,7 @@ static kAddress TryGetKernelBase()
 KernelBinary::KernelBinary()
 {
 	m_MappedKernel = LoadLibraryA("ntoskrnl.exe");
-	s_KernelBase = TryGetKernelBase();
+	m_KernelBase = TryGetKernelBase();
 
 	// load sections
 	m_CodeSections = GetSectionsByCharacteristics(
@@ -40,7 +40,7 @@ KernelBinary::KernelBinary()
 
 kAddress KernelBinary::GetKernelBase()
 {
-	return s_KernelBase;
+	return m_KernelBase;
 }
 
 kAddress KernelBinary::ResolveExport(const char* ExportName) const
@@ -138,7 +138,7 @@ std::vector<ReadonlyRegion_t> KernelBinary::GetSectionsByCharacteristics(Dword R
 kAddress KernelBinary::MappedToKernel(const void* MappedAddress) const
 {
 	auto rva = Qword(MappedAddress) - Qword(m_MappedKernel);
-	return s_KernelBase + rva;
+	return m_KernelBase + rva;
 }
 
 

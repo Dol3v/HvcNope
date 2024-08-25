@@ -11,10 +11,8 @@ namespace Sig
 {
 	struct SigByte
 	{
-		Byte Val;
+		Byte Value;
 		bool IsWildcard;
-
-	public:
 
 		static SigByte Val(Byte Value) {
 			return SigByte{ Value, false };

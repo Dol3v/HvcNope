@@ -198,6 +198,11 @@ public:
 		return returnValue;
 	}
 
+	kAddress GenerateKernelFunctionPointer()
+	{
+
+	}
+
 private:
 	std::queue<std::function<void()>> m_TaskQueue;
 
