@@ -1,15 +1,39 @@
 
 #include "Resolves.h"
+#include "KernelBinary.h"
 #include "Utils.h"
 
 
 kAddress Resolves::GetProcessAddress(Dword ProcessId)
 {
-    static kAddress processListHead = 0;
+    static kAddress processListHead = kNullptr;
 
-    if (processListHead == 0) {
+    if (processListHead == kNullptr) {
+        // resolve from export
 
+        processListHead = g_KernelBinary->ResolveExport("PsInitialSystemProcess");
+        if (!processListHead) {
+            // error
+        }
     }
+
+    constexpr ULONG ActiveProcessLinksOffset = 0x448;
+    constexpr ULONG ProcessIdOffset = 0x440;
+
+    kAddress process = kNullptr;
+
+    Utils::ForEveryListElement(processListHead, ActiveProcessLinksOffset,
+        [&](kAddress Process) {
+            if (g_Rw->ReadQword(Process + ProcessIdOffset) == ProcessId)
+            {
+                process = kNullptr;
+                return Utils::cStopLoop;
+            }
+
+            return Utils::cContinueLoop;
+        });
+
+    return process;
 }
 
 kAddress TryResolveThreadListHead() 
