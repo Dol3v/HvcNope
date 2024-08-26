@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Log.h"
 #include "KernelBinary.h"
 #include "KernelReadWrite.h"
 

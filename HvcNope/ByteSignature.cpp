@@ -26,6 +26,17 @@ namespace Sig
         return signature;
     }
 
+    std::vector<SigByte> FromBytes(std::span<const Byte> Bytes)
+    {
+        std::vector<SigByte> result;
+
+        for (size_t i = 0; i < Bytes.size(); i++)
+        {
+            result.push_back(SigByte(Bytes[i]));
+        }
+        return result;
+    }
+
 
     std::optional<size_t> FindSignatureInBuffer(ReadonlyRegion_t Buffer, Signature_t Signature)
     {

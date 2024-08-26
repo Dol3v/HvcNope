@@ -1,6 +1,8 @@
 
 #include "Resolves.h"
+
 #include "KernelBinary.h"
+#include "Offsets.h"
 #include "Utils.h"
 
 
@@ -17,14 +19,13 @@ kAddress Resolves::GetProcessAddress(Dword ProcessId)
         }
     }
 
-    constexpr ULONG ActiveProcessLinksOffset = 0x448;
-    constexpr ULONG ProcessIdOffset = 0x440;
+    using namespace Offsets;
 
     kAddress process = kNullptr;
 
-    Utils::ForEveryListElement(processListHead, ActiveProcessLinksOffset,
+    Utils::ForEveryListElement(processListHead, EProcess::ActiveProcessLinks,
         [&](kAddress Process) {
-            if (g_Rw->ReadQword(Process + ProcessIdOffset) == ProcessId)
+            if (g_Rw->ReadQword(Process + EProcess::ProcessId) == ProcessId)
             {
                 process = kNullptr;
                 return Utils::cStopLoop;
@@ -42,10 +43,8 @@ kAddress TryResolveThreadListHead()
     kAddress currentProcess = Resolves::GetProcessAddress(currentProcessId);
     if (kNullptr == currentProcess) return kNullptr;
 
-    const Dword cProcessThreadListHeadOffset = 0x5e0;
-
     // try getting the address of a single thread
-    auto processThreadList = currentProcess + cProcessThreadListHeadOffset;
+    auto processThreadList = currentProcess + Offsets::EProcess::ThreadListHead;
 
     kAddress threadListEntry = kNullptr;
     Utils::ForEveryListEntry(processThreadList,
@@ -75,25 +74,23 @@ kAddress Resolves::GetThreadAddress(Dword ThreadId)
         }
     }
 
-    const Dword cThreadListEntryOffset  = 0x4e8;
-    const Dword cThreadCidOffset        = 0x478;
-
     kAddress threadAddress = kNullptr;
-    using namespace Utils;
+    
+    using namespace Offsets;
 
-    ForEveryListElement(threadListHead, cThreadListEntryOffset,
+    Utils::ForEveryListElement(threadListHead, EThread::ListEntry,
         [&](kAddress Thread) {
-            kAddress threadCid = Thread + cThreadCidOffset;
+            kAddress threadCid = Thread + EThread::Cid;
 
             // threadCid->UniqueThread
             Qword threadId = g_Rw->ReadQword(threadCid + 8);
             if (Dword(threadId) == ThreadId) {
                 // found thread
                 threadAddress = Thread;
-                return cStopLoop;
+                return Utils::cStopLoop;
             }
 
-            return cContinueLoop;
+            return Utils::cContinueLoop;
         });
 
     return threadAddress;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "KernelReadWrite.h"
+#include "Log.h"
 #include "Utils.h"
 
 class TrueSightRw : public KernelReadWrite {
@@ -8,7 +9,7 @@ public:
 	TrueSightRw() : m_Handle(0) {
 		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 		if (m_Handle == INVALID_HANDLE_VALUE) {
-			//RaiseError("CreateFileA");
+			LOG_ERROR("Failed to initialize Truesight");
 		}
 	}
 

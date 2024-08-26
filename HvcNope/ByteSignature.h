@@ -27,6 +27,8 @@ namespace Sig
 
 	std::vector<SigByte> FromHex(std::string_view HexString);
 
+	std::vector<SigByte> FromBytes(std::span<const Byte> Bytes);
+
 	std::optional<size_t> FindSignatureInBuffer(ReadonlyRegion_t Buffer, Signature_t Signature);
 }
 

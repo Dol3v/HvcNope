@@ -119,6 +119,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -137,6 +138,8 @@
   <ItemGroup>
     <ClInclude Include="ByteSignature.h" />
     <ClInclude Include="CallFunction.h" />
+    <ClInclude Include="Offsets.h" />
+    <ClInclude Include="PointerGenerator.h" />
     <ClInclude Include="Resolves.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="KernelReadWrite.h" />

@@ -56,10 +56,24 @@ kAddress KernelBinary::ResolveExport(const char* ExportName) const
 
 optional<const Byte*> FindSignatureInRegions(
 	const std::vector<ReadonlyRegion_t>& Regions,
-	Sig::Signature_t Signature) 
+	Sig::Signature_t Signature,
+	const Byte* Start) 
 {
 	for (auto& region : Regions) {
-		auto index = Sig::FindSignatureInBuffer(region, Signature);
+		// skip regions that are below our starting point
+		if (region.data() + region.size() <= Start) continue;
+
+		auto searchRegion = region;
+		
+		// if we should start searching in the middle of 
+		// a region, trim it down
+		if (searchRegion.data() < Start) {
+			auto offset = Qword(Start - searchRegion.data());
+			auto length = searchRegion.size() - offset;
+			searchRegion = searchRegion.subspan(offset, length);
+		}
+
+		auto index = Sig::FindSignatureInBuffer(searchRegion, Signature);
 		if (index) {
 			// convert index to region start pointer
 			return region.data() + index.value();
@@ -71,24 +85,25 @@ optional<const Byte*> FindSignatureInRegions(
 
 optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags)
 {
+	auto occurrence = FindSignatureInBinary(Signature, Flags);
+	return occurrence.transform(MappedToKernel);
+}
 
-	if (Flags & LocationFlags::InCode) 
+void KernelBinary::ForEveryCodeSignatureOccurrence(
+	Sig::Signature_t Signature,
+	std::function<bool(const Byte*)> Consumer)
+{
+	bool continueSearch = true;
+	const Byte* searchStart = nullptr;
+
+	while (continueSearch)
 	{
-		auto occurrence = FindSignatureInRegions(m_CodeSections, Signature);
-		if (occurrence) {
-			return MappedToKernel(occurrence.value());
-		}
-	}
+		auto occurrence = FindSignatureInBinary(Signature, InCode, searchStart);
+		if (!occurrence) break;
 
-	if (Flags & LocationFlags::InRdata)
-	{
-		auto occurrence = FindSignatureInRegions(m_RoDataSections, Signature);
-		if (occurrence) {
-			return MappedToKernel(occurrence.value());
-		}
+		continueSearch = Consumer(occurrence.value());
+		searchStart = occurrence.value() + 1;
 	}
-
-	return std::nullopt;
 }
 
 KernelBinary::~KernelBinary()
@@ -96,6 +111,26 @@ KernelBinary::~KernelBinary()
 	if (m_MappedKernel) {
 		FreeLibrary(m_MappedKernel);
 	}
+}
+
+std::optional<const Byte*> KernelBinary::FindSignatureInBinary(
+	Sig::Signature_t Signature,
+	Dword Flags,
+	const Byte* Start)
+{
+	if (Flags & LocationFlags::InCode)
+	{
+		auto occurrence = FindSignatureInRegions(m_CodeSections, Signature, Start);
+		return occurrence;
+	}
+
+	if (Flags & LocationFlags::InRdata)
+	{
+		auto occurrence = FindSignatureInRegions(m_RoDataSections, Signature, Start);
+		return occurrence;
+	}
+
+	return std::nullopt;
 }
 
 const Byte* KernelBinary::RvaToAddress(Qword Rva) const

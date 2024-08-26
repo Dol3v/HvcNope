@@ -2,6 +2,7 @@
 
 #include "Types.h"
 #include "ByteSignature.h"
+#include <functional>
 
 class KernelBinary 
 {
@@ -23,6 +24,15 @@ public:
 	};
 
 	std::optional<kAddress> FindSignature(Sig::Signature_t Signature, Dword Flags = InCode | InRdata);
+
+	std::optional<const Byte*> FindSignatureInBinary(
+		Sig::Signature_t Signature,
+		Dword Flags = InCode | InRdata,
+		const Byte* Start = nullptr);
+
+	void ForEveryCodeSignatureOccurrence(
+		Sig::Signature_t Signature,
+		std::function<bool(const Byte*)> Consumer);
 
 	~KernelBinary();
 

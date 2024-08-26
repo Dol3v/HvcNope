@@ -62,5 +62,11 @@
     <ClInclude Include="Truesight.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Offsets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PointerGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
