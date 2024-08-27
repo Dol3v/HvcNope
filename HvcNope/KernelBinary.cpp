@@ -2,7 +2,7 @@
 
 #include <Psapi.h>
 
-static kAddress TryGetKernelBase() 
+static std::optional<kAddress> TryGetKernelBase() 
 {
 	//
 	// We use EnumDeviceDrivers - the first device driver enumerated is ntoskrnl.exe.
@@ -16,7 +16,7 @@ static kAddress TryGetKernelBase()
 		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 			// handle weird error
 
-			return kNullptr;
+			return std::nullopt;
 		}
 	}
 
@@ -39,11 +39,28 @@ size_t GetSizeOfLoadedModule(HMODULE Module)
 	return 0;
 }
 
-KernelBinary::KernelBinary()
+KernelBinary::KernelBinary() : m_MappedKernel(0), m_KernelBase(kNullptr), m_MappedKernelSize(0)
 {
 	m_MappedKernel = LoadLibraryA("ntoskrnl.exe");
-	m_KernelBase = TryGetKernelBase();
+	if (!m_MappedKernel) {
+		OutputDebugStringA("[-] Failed to load ntos\n");
+		return;
+	}
+	std::cout << "[*] Mapped Kernel base is " << std::hex << Qword(m_MappedKernel) << std::endl;
+
+	auto base = TryGetKernelBase();
+	if (!base) {
+		OutputDebugStringA("[-] Failed to find kernel base\n");
+		return;
+	}
+	m_KernelBase = base.value();
+	std::cout << "[*] Kernel base is " << std::hex << m_KernelBase << std::endl;
+
 	m_MappedKernelSize = GetSizeOfLoadedModule(m_MappedKernel);
+	if (!m_MappedKernelSize) {
+		OutputDebugStringA("[-] Failed to find kernel binary size\n");
+		return;
+	}
 
 	// load sections
 	m_CodeSections = GetSectionsByCharacteristics(
@@ -64,7 +81,7 @@ kAddress KernelBinary::ResolveExport(const char* ExportName) const
 {
 	auto localExportAddress = GetProcAddress(m_MappedKernel, ExportName);
 	if (!localExportAddress) {
-		// TODO log error
+		OutputDebugStringA("[-] Failed to find export\n");
 		return 0;
 	}
 
@@ -93,7 +110,7 @@ optional<const Byte*> FindSignatureInRegions(
 		auto index = Sig::FindSignatureInBuffer(searchRegion, Signature);
 		if (index) {
 			// convert index to region start pointer
-			return region.data() + index.value();
+			return searchRegion.data() + index.value();
 		}
 	}
 

@@ -7,9 +7,9 @@
 class TrueSightRw : public KernelReadWrite {
 public:
 	TrueSightRw() : m_Handle(0) {
-		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 		if (m_Handle == INVALID_HANDLE_VALUE) {
-			//LOG_ERROR("Failed to initialize Truesight");
+			std::cerr << "Failed to init truesight, le=" << GetLastError() << std::endl;
 		}
 	}
 
@@ -26,7 +26,7 @@ public:
 		auto* outputBuffer = new BYTE[Size];
 
 		if (!DeviceIoControl(m_Handle, MemoryReadIoctl, &memoryReadParameters, sizeof(memoryReadParameters), outputBuffer, Size, nullptr, nullptr)) {
-			//RaiseError("DeviceIoControl(MemoryReadIoctl) Failed");
+			OutputDebugStringA("[-] DeviceIoControl(MemoryReadIoctl) Failed");
 		}
 
 		std::vector<BYTE> result(outputBuffer, outputBuffer + Size);
@@ -59,7 +59,7 @@ public:
 			sizeof(memoryWriteParamters),
 			nullptr, 0, nullptr, nullptr)) 
 		{
-			//RaiseError("DeviceIoControl(MemoryWriteIoctl) Failed");
+			OutputDebugStringA("[-] DeviceIoControl(MemoryWriteIoctl) Failed");
 		}
 	}
 

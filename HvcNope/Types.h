@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <optional>
+#include <iostream>
 #include <span>
 
 typedef UINT64 Qword;
