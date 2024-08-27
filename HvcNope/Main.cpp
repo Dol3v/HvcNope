@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+#pragma comment(lib, "ntdll.lib")
+
 // initialize Globals
 //Logger g_Logger(Logger::Level::DEBUG);
 
