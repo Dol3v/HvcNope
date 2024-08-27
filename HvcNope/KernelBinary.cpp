@@ -103,7 +103,10 @@ optional<const Byte*> FindSignatureInRegions(
 optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags) const
 {
 	auto occurrence = FindSignatureInBinary(Signature, Flags);
-	return occurrence.transform(MappedToKernel);
+	if (occurrence) {
+		return MappedToKernel(occurrence.value());
+	}
+	return std::nullopt;
 }
 
 void KernelBinary::ForEveryCodeSignatureOccurrence(
