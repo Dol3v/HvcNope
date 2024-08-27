@@ -23,10 +23,27 @@ static kAddress TryGetKernelBase()
 	return kAddress(deviceDriverBase);
 }
 
+size_t GetSizeOfLoadedModule(HMODULE Module)
+{
+	MODULEINFO moduleinfo;
+	if (GetModuleInformation(
+		GetCurrentProcess(),
+		Module,
+		&moduleinfo,
+		sizeof(moduleinfo))) 
+	{
+		return moduleinfo.SizeOfImage;
+	}
+
+	// TODO: die later
+	return 0;
+}
+
 KernelBinary::KernelBinary()
 {
 	m_MappedKernel = LoadLibraryA("ntoskrnl.exe");
 	m_KernelBase = TryGetKernelBase();
+	m_MappedKernelSize = GetSizeOfLoadedModule(m_MappedKernel);
 
 	// load sections
 	m_CodeSections = GetSectionsByCharacteristics(
@@ -83,7 +100,7 @@ optional<const Byte*> FindSignatureInRegions(
 	return std::nullopt;
 }
 
-optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags)
+optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword Flags) const
 {
 	auto occurrence = FindSignatureInBinary(Signature, Flags);
 	return occurrence.transform(MappedToKernel);
@@ -91,7 +108,7 @@ optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword
 
 void KernelBinary::ForEveryCodeSignatureOccurrence(
 	Sig::Signature_t Signature,
-	std::function<bool(const Byte*)> Consumer)
+	std::function<bool(const Byte*)> Consumer) const
 {
 	bool continueSearch = true;
 	const Byte* searchStart = nullptr;
@@ -106,6 +123,12 @@ void KernelBinary::ForEveryCodeSignatureOccurrence(
 	}
 }
 
+bool KernelBinary::InKernelBounds(const Byte* PossiblePointer) const
+{
+	auto* base = (const Byte*)m_MappedKernel;
+	return PossiblePointer >= base && PossiblePointer <= base + m_MappedKernelSize;
+}
+
 KernelBinary::~KernelBinary()
 {
 	if (m_MappedKernel) {
@@ -116,7 +139,7 @@ KernelBinary::~KernelBinary()
 std::optional<const Byte*> KernelBinary::FindSignatureInBinary(
 	Sig::Signature_t Signature,
 	Dword Flags,
-	const Byte* Start)
+	const Byte* Start) const
 {
 	if (Flags & LocationFlags::InCode)
 	{
