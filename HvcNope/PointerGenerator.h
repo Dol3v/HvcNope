@@ -38,7 +38,6 @@ private:
 	static bool LocateLongjmpGadgetAndBuf();
 
 private:
-
 	static kAddress s_LongJmpGadget;
 	static kAddress s_LongJmpBuf;
 };

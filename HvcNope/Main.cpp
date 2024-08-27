@@ -5,7 +5,7 @@
 #include <iostream>
 
 // initialize Globals
-Logger g_Logger(Logger::Level::DEBUG);
+//Logger g_Logger(Logger::Level::DEBUG);
 
 std::shared_ptr<KernelReadWrite> g_Rw = std::make_shared<TrueSightRw>();
 std::shared_ptr<KernelBinary> g_KernelBinary = std::make_shared<KernelBinary>();
@@ -25,5 +25,12 @@ int main()
 	//InitializeGraphicalSubsystem();
 
 	KInvoker invoker;
-	kAddress poolAddress = 
+	kAddress poolAddress = invoker.CallKernelFunction(
+		"ExAllocatePool2",
+		0x41,	// POOL_FLAG_PAGED,
+		0x100, // size
+		'T3st' // pool tag
+	);
+
+	std::cout << std::hex << poolAddress << std::endl;
 }
