@@ -1,7 +1,7 @@
 #pragma once
 
 #include "KernelReadWrite.h"
-//#include "Log.h"
+#include "Log.h"
 #include "Utils.h"
 
 class TrueSightRw : public KernelReadWrite {
@@ -9,7 +9,7 @@ public:
 	TrueSightRw() : m_Handle(0) {
 		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 		if (m_Handle == INVALID_HANDLE_VALUE) {
-			std::cerr << "Failed to init truesight, le=" << GetLastError() << std::endl;
+			LOG_FAIL("Failed to open truesight, le=%d", GetLastError());
 		}
 	}
 
@@ -26,7 +26,8 @@ public:
 		auto* outputBuffer = new BYTE[Size];
 
 		if (!DeviceIoControl(m_Handle, MemoryReadIoctl, &memoryReadParameters, sizeof(memoryReadParameters), outputBuffer, Size, nullptr, nullptr)) {
-			OutputDebugStringA("[-] DeviceIoControl(MemoryReadIoctl) Failed");
+			LOG_FAIL("Failed to send read ioctl, le=%d", GetLastError());
+			throw std::runtime_error("truesight");
 		}
 
 		std::vector<BYTE> result(outputBuffer, outputBuffer + Size);
@@ -59,7 +60,8 @@ public:
 			sizeof(memoryWriteParamters),
 			nullptr, 0, nullptr, nullptr)) 
 		{
-			OutputDebugStringA("[-] DeviceIoControl(MemoryWriteIoctl) Failed");
+			LOG_FAIL("Failed to send write ioctl, le=%d", GetLastError());
+			throw std::runtime_error("truesight");
 		}
 	}
 

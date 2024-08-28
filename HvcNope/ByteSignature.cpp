@@ -1,5 +1,6 @@
 #include "ByteSignature.h"
 
+#include <sstream>
 #include <string>
 
 namespace Sig
@@ -63,6 +64,23 @@ namespace Sig
         }
 
         return std::nullopt; // Signature not found
+    }
+
+    std::string HexDump(Signature_t Signature)
+    {
+        std::stringstream ss;
+
+        for (auto sigbyte : Signature)
+        {
+            if (sigbyte.IsWildcard) {
+                ss << "*";
+            }
+            else {
+                ss << std::hex << sigbyte.Value;
+            }
+
+            ss << " ";
+        }
     }
 }
 

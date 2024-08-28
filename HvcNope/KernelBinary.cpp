@@ -1,5 +1,6 @@
 #include "KernelBinary.h"
 
+#include "Log.h"
 #include <Psapi.h>
 
 static std::optional<kAddress> TryGetKernelBase() 
@@ -15,7 +16,7 @@ static std::optional<kAddress> TryGetKernelBase()
 	{
 		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 			// handle weird error
-
+			LOG_FAIL("Failed to get kernel base");
 			return std::nullopt;
 		}
 	}
@@ -35,7 +36,7 @@ size_t GetSizeOfLoadedModule(HMODULE Module)
 		return moduleinfo.SizeOfImage;
 	}
 
-	// TODO: die later
+	LOG_FAIL("Failed to get kernel size, le=%d", GetLastError());
 	return 0;
 }
 
@@ -43,22 +44,22 @@ KernelBinary::KernelBinary() : m_MappedKernel(0), m_KernelBase(kNullptr), m_Mapp
 {
 	m_MappedKernel = LoadLibraryA("ntoskrnl.exe");
 	if (!m_MappedKernel) {
-		OutputDebugStringA("[-] Failed to load ntos\n");
+		LOG_FAIL("[-] Failed to load ntos\n");
 		return;
 	}
-	std::cout << "[*] Mapped Kernel base is " << std::hex << Qword(m_MappedKernel) << std::endl;
+
+	LOG_DEBUG("Mapped kernel base is %p", m_MappedKernel);
 
 	auto base = TryGetKernelBase();
 	if (!base) {
-		OutputDebugStringA("[-] Failed to find kernel base\n");
+		LOG_FAIL("[-] Failed to find kernel base\n");
 		return;
 	}
 	m_KernelBase = base.value();
-	std::cout << "[*] Kernel base is " << std::hex << m_KernelBase << std::endl;
+	LOG_DEBUG("Kernel base is 0x%llx", m_KernelBase);
 
 	m_MappedKernelSize = GetSizeOfLoadedModule(m_MappedKernel);
 	if (!m_MappedKernelSize) {
-		OutputDebugStringA("[-] Failed to find kernel binary size\n");
 		return;
 	}
 
@@ -81,8 +82,8 @@ kAddress KernelBinary::ResolveExport(const char* ExportName) const
 {
 	auto localExportAddress = GetProcAddress(m_MappedKernel, ExportName);
 	if (!localExportAddress) {
-		OutputDebugStringA("[-] Failed to find export\n");
-		return 0;
+		LOG_FAIL("Failed to find export %s", ExportName);
+		return kNullptr;
 	}
 
 	return MappedToKernel(localExportAddress);
@@ -114,6 +115,7 @@ optional<const Byte*> FindSignatureInRegions(
 		}
 	}
 
+	LOG_WARN("Failed to find signature %s in regions, starting address=%p");
 	return std::nullopt;
 }
 

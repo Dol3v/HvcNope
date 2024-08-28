@@ -1,60 +1,75 @@
+
 #pragma once
 
 #include <iostream>
-#include <fstream>
 #include <sstream>
 #include <string>
-#include <mutex>
-#include <format>
+#include <windows.h>
 
+// Log levels
+enum LogLevel {
+    DEBUG,
+    INFO,
+    WARN,
+    FAIL
+};
+
+// Convert log level to string
+inline const char* LogLevelToString(LogLevel level) {
+    switch (level) {
+    case DEBUG: return "DEBUG";
+    case INFO: return "INFO";
+    case WARN: return "WARN";
+    case FAIL: return "FAIL";
+    default: return "UNKNOWN";
+    }
+}
+
+// Base logger class
 class Logger {
 public:
-    enum LogLevel {
-        DEBUG,
-        INFO,
-        WARNING,
-        ERROR
-    };
+    Logger(LogLevel level) : logLevel(level) {}
 
-    Logger() : m_Level(LogLevel::INFO) {}
+    void Log(LogLevel level, const std::string& message) {
+        if (level >= logLevel) {
+            std::stringstream logStream;
+            logStream << LogLevelToString(level) << ": " << message;
 
-    Logger(LogLevel Level) : m_Level(Level) {}
+            // Log to std::cout and std::cerr based on log level
+            if (level == FAIL || level == WARN) {
+                std::cerr << logStream.str() << std::endl;
+            }
+            else {
+                std::cout << logStream.str() << std::endl;
+            }
 
-    void setLevel(LogLevel level) {
-        m_Level = level;
-    }
-
-    template<typename... Args>
-    void log(LogLevel Level, const std::string& Format, Args&&... Arguments) {
-        if (Level >= m_Level) {
-            std::lock_guard<std::mutex> lock(m_Lock);
-            std::ostream& out = (Level == Level::ERROR) ? std::cerr : std::cout;
-            out << "[" << getLevelString(Level) << "] "
-                << std::vformat(Format, std::make_format_args(std::forward<Args>(Arguments)...))
-                << std::endl;
+            // Log to debug output
+            OutputDebugStringA(logStream.str().c_str());
         }
     }
 
 private:
-    LogLevel m_Level;
-    std::mutex m_Lock;
-
-    static std::string getLevelString(LogLevel level) {
-        switch (level) {
-        case LogLevel::DEBUG: return "DEBUG";
-        case LogLevel::INFO: return "INFO";
-        case LogLevel::WARNING: return "WARNING";
-        case LogLevel::ERROR: return "ERROR";
-        }
-
-        return "wtf";
-    }
+    LogLevel logLevel;
 };
 
-extern Logger g_Logger;
+// Singleton logger instance
+Logger& GetLogger() {
+    static Logger logger(DEBUG); // Set the default log level here
+    return logger;
+}
 
 // Macros for logging
-#define LOG_DEBUG(message, ...)      g_Logger.log(Logger::LogLevel::DEBUG, message, __VA_ARGS__);
-#define LOG_INFO(message, ...)       g_Logger.log(Logger::LogLevel::INFO, message, __VA_ARGS__);
-#define LOG_WARNING(message, ...)    g_Logger.log(Logger::LogLevel::WARNING, message, __VA_ARGS__);
-#define LOG_ERROR(message, ...)      g_Logger.log(Logger::LogLevel::ERROR, message, __VA_ARGS__);
+#define LOG_DEBUG(format, ...)  Log(DEBUG, format "\n", __VA_ARGS__)
+#define LOG_INFO(format, ...)   Log(INFO, format "\n", __VA_ARGS__)
+#define LOG_WARN(format, ...)   Log(WARN, format "\n", __VA_ARGS__)
+#define LOG_FAIL(format, ...)   Log(FAIL, format "\n", __VA_ARGS__)
+
+inline void Log(LogLevel level, const char* format, ...) {
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    GetLogger().Log(level, buffer);
+}
