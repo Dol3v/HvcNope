@@ -131,6 +131,7 @@
   <ItemGroup>
     <ClCompile Include="ByteSignature.cpp" />
     <ClCompile Include="KernelBinary.cpp" />
+    <ClCompile Include="Log.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="PointerGenerator.cpp" />
     <ClCompile Include="Resolves.cpp" />

