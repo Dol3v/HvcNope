@@ -26,10 +26,10 @@ void Logger::Log( LogLevel level, const std::string& message )
 
         // Log to std::cout and std::cerr based on log level
         if (level == FAIL || level == WARN) {
-            std::cerr << logStream.str() << std::endl;
+            std::cerr << logStream.str();
         }
         else {
-            std::cout << logStream.str() << std::endl;
+            std::cout << logStream.str();
         }
 
         // Log to debug output
