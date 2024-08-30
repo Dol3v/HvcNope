@@ -36,6 +36,9 @@
     <ClCompile Include="Log.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="MockDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="KernelReadWrite.h">
@@ -72,6 +75,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="PointerGenerator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Nt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MockDriver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

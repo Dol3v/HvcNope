@@ -78,12 +78,12 @@ kAddress KernelBinary::GetKernelBase()
 	return m_KernelBase;
 }
 
-kAddress KernelBinary::ResolveExport(const char* ExportName) const
+std::optional<kAddress> KernelBinary::ResolveExport(const char* ExportName) const
 {
 	auto localExportAddress = GetProcAddress(m_MappedKernel, ExportName);
 	if (!localExportAddress) {
-		LOG_FAIL("Failed to find export %s", ExportName);
-		return kNullptr;
+		LOG_WARN("Failed to find export %s", ExportName);
+		return std::nullopt;
 	}
 
 	return MappedToKernel(localExportAddress);

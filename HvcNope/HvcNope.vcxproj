@@ -133,6 +133,7 @@
     <ClCompile Include="KernelBinary.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="Main.cpp" />
+    <ClCompile Include="MockDriver.cpp" />
     <ClCompile Include="PointerGenerator.cpp" />
     <ClCompile Include="Resolves.cpp" />
     <ClCompile Include="Utils.cpp" />
@@ -140,6 +141,8 @@
   <ItemGroup>
     <ClInclude Include="ByteSignature.h" />
     <ClInclude Include="CallFunction.h" />
+    <ClInclude Include="MockDriver.h" />
+    <ClInclude Include="Nt.h" />
     <ClInclude Include="Offsets.h" />
     <ClInclude Include="PointerGenerator.h" />
     <ClInclude Include="Resolves.h" />

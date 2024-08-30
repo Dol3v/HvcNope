@@ -7,7 +7,7 @@
 class TrueSightRw : public KernelReadWrite {
 public:
 	TrueSightRw() : m_Handle(0) {
-		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		m_Handle = CreateFileA("\\\\.\\TrueSight", GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 		if (m_Handle == INVALID_HANDLE_VALUE) {
 			LOG_FAIL("Failed to open truesight, le=%d", GetLastError());
 		}
@@ -54,12 +54,13 @@ public:
 
 		static_assert(sizeof(memoryWriteParamters) == 0x18, "Incorrect size of write parameters");
 
-		if (!DeviceIoControl(m_Handle,
+		if (!DeviceIoControl(
+			m_Handle,
 			MemoryWriteIoctl,
 			&memoryWriteParamters,
 			sizeof(memoryWriteParamters),
-			nullptr, 0, nullptr, nullptr)) 
-		{
+			nullptr, 0, nullptr, nullptr
+		)) {
 			LOG_FAIL("Failed to send write ioctl, le=%d", GetLastError());
 			throw std::runtime_error("truesight");
 		}

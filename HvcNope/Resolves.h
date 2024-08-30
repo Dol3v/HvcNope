@@ -4,7 +4,7 @@
 
 namespace Resolves {
 
-	kAddress GetThreadAddress(Dword ThreadId);
+	std::optional<kAddress> GetThreadAddressInProcess(Dword ThreadId, Dword ProcessId);
 
-	kAddress GetProcessAddress(Dword ProcessId);
+	std::optional<kAddress> GetProcessAddress(Dword ProcessId);
 }

@@ -1,5 +1,6 @@
 #include "Globals.h"
-#include "Truesight.h"
+//#include "Truesight.h"
+#include "MockDriver.h"
 #include "CallFunction.h"
 
 #include <iostream>
@@ -9,7 +10,7 @@
 // initialize Globals
 //Logger g_Logger(Logger::LogLevel::DEBUG);
 
-std::shared_ptr<KernelReadWrite> g_Rw = std::make_shared<TrueSightRw>();
+std::shared_ptr<KernelReadWrite> g_Rw = std::make_shared<MockDriverRw>();
 std::shared_ptr<KernelBinary> g_KernelBinary = std::make_shared<KernelBinary>();
 
 void InitializeGraphicalSubsystem()

@@ -4,80 +4,61 @@
 #include "KernelBinary.h"
 #include "Offsets.h"
 #include "Utils.h"
+#include "Log.h"
 
 
-kAddress Resolves::GetProcessAddress(Dword ProcessId)
+kAddress GetSystemProcess()
+{
+    auto PsInitialSystemProcess = g_KernelBinary->ResolveExport( "PsInitialSystemProcess" );
+    if (!PsInitialSystemProcess) {
+        // something is seriously off
+        FATAL("Failed to resolve PsInitialSystemProcess");
+    }
+
+    kAddress systemProcess = g_Rw->ReadQword( PsInitialSystemProcess.value() );
+    return systemProcess;
+}
+
+
+std::optional<kAddress> Resolves::GetProcessAddress(Dword ProcessId)
 {
     static kAddress processListHead = kNullptr;
+    using namespace Offsets;
 
     if (processListHead == kNullptr) {
         // resolve from export
-
-        processListHead = g_KernelBinary->ResolveExport("PsInitialSystemProcess");
-        if (!processListHead) {
-            // error
-        }
+        auto systemProcess = GetSystemProcess();
+        processListHead = systemProcess + EProcess::ActiveProcessLinks;
+        LOG_DEBUG( "Resolved process list head: 0x%llx", processListHead );
     }
 
-    using namespace Offsets;
+    std::optional<kAddress> process = std::nullopt;
 
-    kAddress process = kNullptr;
-
-    Utils::ForEveryListElement(processListHead, EProcess::ActiveProcessLinks,
-        [&](kAddress Process) {
-            if (g_Rw->ReadQword(Process + EProcess::ProcessId) == ProcessId)
+    Utils::ForEveryListElement( processListHead, EProcess::ActiveProcessLinks,
+        [&]( kAddress Process ) {
+            if (g_Rw->ReadQword( Process + EProcess::ProcessId ) == ProcessId)
             {
-                process = kNullptr;
+                process = Process;
                 return Utils::cStopLoop;
             }
 
             return Utils::cContinueLoop;
-        });
+        } );
 
+    LOG_DEBUG( "Address of process %d is 0x%llx", ProcessId, process.value_or( 0 ) );
     return process;
 }
 
-kAddress TryResolveThreadListHead() 
+std::optional<kAddress> Resolves::GetThreadAddressInProcess( Dword ThreadId, Dword ProcessId )
 {
-    auto currentProcessId = GetCurrentProcessId();
-    kAddress currentProcess = Resolves::GetProcessAddress(currentProcessId);
-    if (kNullptr == currentProcess) return kNullptr;
+    auto process = Resolves::GetProcessAddress( ProcessId );
+    if (!process) return std::nullopt;
 
-    // try getting the address of a single thread
-    auto processThreadList = currentProcess + Offsets::EProcess::ThreadListHead;
-
-    kAddress threadListEntry = kNullptr;
-    Utils::ForEveryListEntry(processThreadList,
-        [&](kAddress ThreadListEntry) {
-            threadListEntry = ThreadListEntry;
-            return Utils::cStopLoop; // stop loop immediately
-        });
-
-    if (kNullptr == threadListEntry) {
-        // TODO: log
-        return kNullptr;
-    }
-
-    // this is a doubly-linked list, doesn't matter where we're starting
-    return threadListEntry;
-}
-
-kAddress Resolves::GetThreadAddress(Dword ThreadId)
-{
-    static kAddress threadListHead = kNullptr;
-
-    if (kNullptr == threadListHead) {
-        threadListHead = TryResolveThreadListHead();
-        if (kNullptr == threadListHead) {
-            // TODO: log
-            return kNullptr;
-        }
-    }
-
-    kAddress threadAddress = kNullptr;
-    
     using namespace Offsets;
 
+    kAddress threadListHead = process.value() + EProcess::ThreadListHead;
+    std::optional<kAddress> threadAddress = std::nullopt;
+        
     Utils::ForEveryListElement(threadListHead, EThread::ListEntry,
         [&](kAddress Thread) {
             kAddress threadCid = Thread + EThread::Cid;

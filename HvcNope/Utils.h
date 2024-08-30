@@ -2,6 +2,7 @@
 
 #include "Types.h"
 #include "Globals.h"
+#include "Log.h"
 
 namespace Utils
 {
@@ -27,7 +28,7 @@ namespace Utils
 				// the consumer wants to stop the loop
 				return;
 			}
-			flink = g_Rw->ReadQword(ListHead); // flink->Flink
+			flink = g_Rw->ReadQword(flink); // flink->Flink
 		}
 	}
 
@@ -40,7 +41,7 @@ namespace Utils
 			if (Consumer(flink - EntryOffset) == cStopLoop) {
 				return;
 			}
-			flink = g_Rw->ReadQword(ListHead); // flink->Flink
+			flink = g_Rw->ReadQword(flink); // flink->Flink
 		}
 	}
 

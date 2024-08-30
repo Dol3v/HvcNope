@@ -11,7 +11,7 @@ public:
 
 	kAddress GetKernelBase();
 
-	kAddress ResolveExport(const char* ExportName) const;
+	std::optional<kAddress> ResolveExport(const char* ExportName) const;
 
 	enum LocationFlags : Dword 
 	{

@@ -31,4 +31,13 @@ public:
 		result.erase(result.begin() + (alignedLength - Length), result.end());
 		return result;
 	}
+
+	virtual void WriteBuffer( kAddress DestinationAddress, std::span<Qword> Buffer )
+	{
+		auto current = DestinationAddress;
+		for (Qword qword : Buffer) {
+			WriteQword( current, qword );
+			current += sizeof( Qword );
+		}
+	}
 };

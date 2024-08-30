@@ -39,8 +39,15 @@ private:
 void Log( LogLevel level, const char* format, ... );
 
 // Macros for logging
-#define LOG_DEBUG(format, ...)  Log(DEBUG, "[*] " format "\n", __VA_ARGS__)
-#define LOG_INFO(format, ...)   Log(INFO,  "[+] " format "\n", __VA_ARGS__)
-#define LOG_WARN(format, ...)   Log(WARN,  "[!] " format "\n", __VA_ARGS__)
-#define LOG_FAIL(format, ...)   Log(FAIL,  "[-] " format "\n", __VA_ARGS__)
+#define LOG_DEBUG(format, ...)  Log(DEBUG, format "\n", __VA_ARGS__)
+#define LOG_INFO(format, ...)   Log(INFO,  format "\n", __VA_ARGS__)
+#define LOG_WARN(format, ...)   Log(WARN,  format "\n", __VA_ARGS__)
+#define LOG_FAIL(format, ...)   Log(FAIL,  format "\n", __VA_ARGS__)
+
+// Log an error and throw a runtime_error
+#define FATAL(format, ...) \
+    do {                                            \
+        LOG_FAIL( format, __VA_ARGS__ );            \
+        throw std::runtime_error("");               \
+    } while (false);                                \
 
