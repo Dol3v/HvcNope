@@ -60,7 +60,7 @@ public:
 			SYSTEM_THREAD_INFORMATION info = { 0 };
 			NTSTATUS status = NtQueryInformationThread(
 				thread,
-				THREADINFOCLASS( ThreadSystemThreadInformation ),
+				ThreadSystemThreadInformation,
 				&info,
 				sizeof( info ),
 				nullptr
@@ -108,7 +108,7 @@ public:
 		m_QueueUpdateVariable.notify_all();
 
 		DebugBreak();
-		auto returnValue = Qword(NtWaitForSingleObject(event, false, nullptr));
+		auto returnValue = NtWaitForSingleObject(event, false, nullptr);
 		LOG_DEBUG( "Returned from NtWaitForSingleObject, return value is 0x%08llx", returnValue );
 		CloseHandle( event );
 

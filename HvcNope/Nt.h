@@ -1,14 +1,25 @@
 #pragma once
 
 #include <Windows.h>
-#include <winternl.h>
+#include "Types.h"
 
-//extern "C"
-//NTSTATUS NtWaitForSingleObject(
-//	HANDLE Object,
-//	bool Aleratable,
-//	PLARGE_INTEGER Timeout
-//);
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
+
+
+//
+// Note the Qword return type - we hijack the execution flow of this syscall,
+// and its return value is the one from the kernel function we desire to call.
+// 
+// See KInvoker for more info.
+//
+extern "C"
+Qword NtWaitForSingleObject(
+	HANDLE Object,
+	bool Aleratable,
+	PLARGE_INTEGER Timeout
+);
 
 
 enum class KTHREAD_STATE : ULONG
@@ -25,21 +36,32 @@ enum class KTHREAD_STATE : ULONG
 	WaitingForProcessInSwap = 9
 };
 
-//struct SYSTEM_THREAD_INFORMATION {
-//	LARGE_INTEGER KernelTime;
-//	LARGE_INTEGER UserTime;
-//	LARGE_INTEGER CreateTime;
-//	ULONG WaitTime;
-//	PVOID StartAddress;
-//	struct {
-//		HANDLE UniqueProcess;
-//		HANDLE UniqueThread;
-//	} ClientId;
-//	LONG Priority;
-//	LONG BasePriority;
-//	ULONG ContextSwitches;
-//	KTHREAD_STATE ThreadState;
-//	ULONG WaitReason;
-//};
+typedef LONG KPRIORITY;
+
+typedef struct _CLIENT_ID {
+	HANDLE UniqueProcess;
+	HANDLE UniqueThread;
+} CLIENT_ID;
+
+typedef struct _SYSTEM_THREAD_INFORMATION {
+	LARGE_INTEGER Reserved1[3];
+	ULONG Reserved2;
+	PVOID StartAddress;
+	CLIENT_ID ClientId;
+	KPRIORITY Priority;
+	LONG BasePriority;
+	ULONG Reserved3;
+	ULONG ThreadState;
+	ULONG WaitReason;
+} SYSTEM_THREAD_INFORMATION, * PSYSTEM_THREAD_INFORMATION;
+
+extern "C"
+NTSTATUS NtQueryInformationThread(
+	IN HANDLE ThreadHandle,
+	IN ULONG ThreadInformationClass,
+	OUT PVOID ThreadInformation,
+	IN ULONG ThreadInformationLength,
+	OUT PULONG ReturnLength OPTIONAL
+);
 
 constexpr ULONG ThreadSystemThreadInformation = 40;
