@@ -19,7 +19,7 @@ namespace Offsets
 	namespace EThread
 	{
 		constexpr Dword InitialStack = 0x28;
-		constexpr Dword Cid = 0x478;
-		constexpr Dword ListEntry = 0x4e8;
+		constexpr Dword Cid = 0x4c8;
+		constexpr Dword ListEntry = 0x538;
 	}
 }

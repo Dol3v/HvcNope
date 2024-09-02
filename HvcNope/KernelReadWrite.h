@@ -15,20 +15,28 @@ public:
 
 #define AlignUpToQword(Size) ((Size & ~(sizeof(Qword))) + sizeof(Qword))
 
-	virtual std::vector<BYTE> ReadBuffer(kAddress Address, ULONG Length) {
+	virtual std::vector<Byte> ReadBuffer(kAddress Address, ULONG Length) {
 		auto alignedLength = AlignUpToQword(Length);
-		auto* buffer = new Qword[alignedLength / sizeof(Qword)];
+
+		Qword* buffer = new Qword[alignedLength / sizeof( Qword )];
 
 		// copy data into buffer
-
 		for (int i = 0; i < alignedLength / sizeof(Qword); ++i) {
 			buffer[i] = this->ReadQword(Address);
+			Address += sizeof( Qword );
 		}
 
-		// copy into vector and trim extra entries
+		// transfer into vector and trim extra bytes, if exist
 
-		std::vector<BYTE> result((BYTE*)buffer, (BYTE*)(buffer)+alignedLength);
-		result.erase(result.begin() + (alignedLength - Length), result.end());
+		auto* start = reinterpret_cast<Byte*>(buffer);
+		auto* end = start + alignedLength;
+
+		std::vector<Byte> result( start, end );
+
+		if (alignedLength != Length) {
+			auto addedBytes = alignedLength - Length;
+			result.erase( result.end() - addedBytes, result.end());
+		}
 		return result;
 	}
 

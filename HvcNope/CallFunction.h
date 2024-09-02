@@ -107,11 +107,7 @@ public:
 
 		m_QueueUpdateVariable.notify_all();
 
-		//
-		// TODO: cleanup thread stacks that are created, prob at the end 
-		// as there's no point in reallocating.
-		//
-
+		DebugBreak();
 		auto returnValue = Qword(NtWaitForSingleObject(event, false, nullptr));
 		LOG_DEBUG( "Returned from NtWaitForSingleObject, return value is 0x%08llx", returnValue );
 		CloseHandle( event );
@@ -121,7 +117,9 @@ public:
 
 private:
 
-	static kAddress GetNtWaitForSingleObjectReturnAddress(kAddress CallingThread)
+	static kAddress GetNtWaitForSingleObjectReturnAddress(
+		_In_ kAddress CallingThread,
+		_Out_ std::vector<Byte>& TrapFrameData)
 	{
 		//
 		// We target the last return address before returning to UserMode. The call stack after
@@ -136,7 +134,21 @@ private:
 
 		kAddress initialStack = g_Rw->ReadQword(CallingThread + Offsets::EThread::InitialStack);
 
-		kAddress returnAddress = g_Rw->ReadQword(initialStack - c_TrapFrameSize - sizeof(kAddress));
+		// Initial stack layout, stack grows down
+		// 
+		// |-----------------------------|
+		// | KiSystemServiceCopyEnd+0x25 | <- Target address (lower address)
+		// |-----------------------------|
+		// |                             |
+		// |         KTRAP_FRAME         |
+		// |			                 |
+		// |-----------------------------| <- Initial stack (higher address)
+		//
+
+		Dword savedFrameLength = c_TrapFrameSize + sizeof( kAddress );
+		kAddress returnAddress = initialStack - savedFrameLength;
+		TrapFrameData = g_Rw->ReadBuffer( returnAddress, savedFrameLength );
+
 		return returnAddress;
 	}
 
@@ -148,12 +160,9 @@ private:
 		_In_ std::tuple<Args...> Arguments
 	) {
 
-		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread);
-
-		//
-		// Read previous trap frame & for later restoration
-		//
-		std::vector<Byte> previousStackData = g_Rw->ReadBuffer(rsp + 8, c_TrapFrameSize + 8);
+		std::vector<Byte> previousStackData;
+		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread, previousStackData);
+		LOG_DEBUG( "Starting to overwrite from 0x%llx", rsp );
 		
 		constexpr DWORD c_KernelStackSize = 12 * 0x1000;
 
@@ -164,7 +173,7 @@ private:
 
 		auto* stackTop = (Byte*)newStack + c_KernelStackSize;
 		
-#define PUT_STACK(val) g_Rw->WriteQword(rsp, Qword(val)); rsp += 8;
+#define PUT_STACK(val) do { g_Rw->WriteQword(rsp, Qword(val)); LOG_DEBUG("Rsp: 0x%llx, val:0x%llx", rsp, Qword(val)); rsp += 8; } while (false);
 
 		//
 		// NOTE: Used to disable SMAP, probably for the better? But for debug purposes we'll just 
@@ -242,7 +251,15 @@ private:
 		rsp = newRsp;
 		rsp += 0x30;		// add rsp, 0x30
 		PUT_STACK(0x1337);	// pop rdi
-		PUT_STACK(0x1337);	// pop rsp
+		PUT_STACK(0x1337);	// pop rsi
+
+		//
+		// This will be the final value rbp takes before getting to the called function,
+		// and returning into KiSystemCall64. As rbp is a nonvolatile register,
+		// it is expected to be a pointer into the saved data. We'll populate it later
+		// when we know where the saved data resides.
+		//
+		kAddress pRbpValue = rsp; 
 		PUT_STACK(0x1337);	// pop rbp
 
 		//
@@ -265,22 +282,21 @@ private:
 
 		// add jump target: Function
 		PUT_STACK(Function);
-		auto beforeArgsRsp = rsp;
 		
 		// add register arguments
 		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
+
+		auto beforeArgs = rsp;
 
 		if constexpr (NumberOfArguments >= 1) PUT_STACK(std::get<0>(Arguments));
 		if constexpr (NumberOfArguments >= 2) PUT_STACK(std::get<1>(Arguments));
 		if constexpr (NumberOfArguments >= 3) PUT_STACK(std::get<2>(Arguments));
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
-		// update rsp to after add rsp, 0x48
-		rsp = beforeArgsRsp + 0x28;
-
+		rsp = beforeArgs + 0x20;
 		// add remaining stack arguments
 		
-		rsp += 0x20; // save shadow space
+		//rsp += 0x20; // save shadow space
 
 		if constexpr (NumberOfArguments >= 5) {
 			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
@@ -294,7 +310,13 @@ private:
 
 		// go back to where we've been - and return to user mode lol
 		
+		LOG_DEBUG( "Writing saved stack data from %p sized 0x%llx, to 0x%llx", previousStackData.data(), previousStackData.size(), rsp);
 		g_Rw->WriteBuffer( rsp, std::span<Qword>( (Qword*) previousStackData.data(), previousStackData.size() / sizeof(Qword)));
+		DebugBreak();
+
+		// Remember to set rbp!
+		g_Rw->WriteQword( pRbpValue, rsp + 0x80 + 8 );
+
 		//std::memcpy(rsp, previousStackData.data(), previousStackData.size());
 	}
 

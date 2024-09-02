@@ -65,7 +65,8 @@ std::optional<kAddress> Resolves::GetThreadAddressInProcess( Dword ThreadId, Dwo
 
             // threadCid->UniqueThread
             Qword threadId = g_Rw->ReadQword(threadCid + 8);
-            if (Dword(threadId) == ThreadId) {
+
+            if (threadId == ThreadId) {
                 // found thread
                 threadAddress = Thread;
                 return Utils::cStopLoop;

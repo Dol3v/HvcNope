@@ -36,4 +36,16 @@ int main()
 	);
 
 	std::cout << std::hex << poolAddress << std::endl;
+
+/*	Dword currentPid = GetCurrentProcessId();
+	Dword currentTid = GetCurrentThreadId();
+
+	auto process = Resolves::GetProcessAddress( currentPid );
+	LOG_INFO( "Process: 0x%llx", process.value_or( 0 ) );
+	DebugBreak();
+
+	auto thread = Resolves::GetThreadAddressInProcess( currentTid, currentPid );
+	LOG_INFO( "Thread: 0x%llx", thread.value_or( 0 ) );
+
+	DebugBreak()*/;
 }

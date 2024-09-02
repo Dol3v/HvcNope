@@ -17,7 +17,7 @@ NTSTATUS DriverUnsupportedIoctl( PDEVICE_OBJECT DeviceObject, PIRP Irp )
     return STATUS_INVALID_DEVICE_REQUEST;
 }
 
-NTSTATUS DriverIoControl( PDEVICE_OBJECT DeviceObject, PIRP Irp )
+NTSTATUS DriverIoControl( PDEVICE_OBJECT, PIRP Irp )
 {
     PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation( Irp );
     NTSTATUS status = STATUS_SUCCESS;
@@ -37,6 +37,8 @@ NTSTATUS DriverIoControl( PDEVICE_OBJECT DeviceObject, PIRP Irp )
             ioctlData->Data = *(volatile ULONGLONG*)ioctlData->Address;
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
+            DbgPrintEx( DPFLTR_IHVDRIVER_ID, 1, "Failed to read qword from 0x%llx\n", ioctlData->Address );
+            DbgBreakPoint();
             status = GetExceptionCode();
         }
         Irp->IoStatus.Information = sizeof( IOCTL_DATA );
@@ -47,6 +49,8 @@ NTSTATUS DriverIoControl( PDEVICE_OBJECT DeviceObject, PIRP Irp )
             *(volatile ULONGLONG*)ioctlData->Address = ioctlData->Data;
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
+            DbgPrintEx( DPFLTR_IHVDRIVER_ID, 1, "Failed to write qword to 0x%llx\n", ioctlData->Address );
+            DbgBreakPoint();
             status = GetExceptionCode();
         }
         Irp->IoStatus.Information = 0;
