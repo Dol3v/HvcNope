@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <string>
+#include "Log.h"
 
 namespace Sig
 {
@@ -14,7 +15,7 @@ namespace Sig
             if (isspace( HexString[i] )) {
                 ++i;
             } else if (HexString[i] == '*') {
-                signature.push_back(SigByte());
+                signature.push_back(SigByte::Wildcard());
                 ++i; // Increment by 1 for wildcard
             }
             else {

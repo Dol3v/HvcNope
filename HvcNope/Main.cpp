@@ -28,11 +28,22 @@ int main()
 	//InitializeGraphicalSubsystem();
 
 	KInvoker invoker;
+	//kAddress poolAddress = invoker.CallKernelFunction(
+	//	"ExAllocatePool2",
+	//	0x41,	// POOL_FLAG_PAGED,
+	//	0x100,	// size
+	//	'T3st'	// pool tag
+	//);
+
+	kAddress base = g_KernelBinary->GetKernelBase();
+
 	kAddress poolAddress = invoker.CallKernelFunction(
-		"ExAllocatePool2",
-		0x41,	// POOL_FLAG_PAGED,
-		0x100, // size
-		'T3st' // pool tag
+		base + 0x3100f0,	// ExAllocatePoolWithTagFromNode
+		1,					// PagedPool
+		0x100,				// size
+		'T3st',				// pool tag
+		0x80000000,			// node smth?
+		0					// default node? 0 on ExAllocatePoolWithTag lol
 	);
 
 	std::cout << std::hex << poolAddress << std::endl;
