@@ -115,7 +115,7 @@ optional<const Byte*> FindSignatureInRegions(
 		}
 	}
 
-	LOG_WARN("Failed to find signature %s in regions, starting address=%p");
+	LOG_WARN("Failed to find signature %s in regions, starting address=%p", Sig::HexDump(Signature).c_str(), Start);
 	return std::nullopt;
 }
 

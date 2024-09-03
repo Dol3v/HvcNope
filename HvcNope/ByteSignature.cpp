@@ -84,6 +84,8 @@ namespace Sig
 
             ss << " ";
         }
+
+        return ss.str();
     }
 }
 

@@ -276,7 +276,6 @@ private:
 			//
 			// Write remaining arguments. The stack looks something like this right now:
 			//
-			//
 			
 			kAddress argumentsStart = rsp - sizeof( remaining );
 			g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remaining, NumberOfArguments ) );
