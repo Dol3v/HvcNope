@@ -9,8 +9,11 @@ namespace Sig
     {
         std::vector<SigByte> signature;
 
-        for (size_t i = 0; i < HexString.length(); ) {
-            if (HexString[i] == '*') {
+        for (size_t i = 0; i < HexString.length(); ) 
+        {
+            if (isspace( HexString[i] )) {
+                ++i;
+            } else if (HexString[i] == '*') {
                 signature.push_back(SigByte());
                 ++i; // Increment by 1 for wildcard
             }
