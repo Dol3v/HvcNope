@@ -1,9 +1,11 @@
 #pragma once
 
-#include "KOffsetManager.h"
-#include "IKernelReadWrite.hpp"
+//#include "Log.h"
+#include "KernelBinary.h"
+#include "KernelReadWrite.h"
 
 #include <memory>
 
 extern std::shared_ptr<KernelReadWrite> g_Rw;
-extern std::shared_ptr<KOffsetManager> g_OffsetManager;
+extern std::shared_ptr<KernelBinary> g_KernelBinary;
+

@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Windows.h>
+#include <optional>
+#include <iostream>
+#include <span>
 
 typedef UINT64 Qword;
 typedef UINT32 Dword;
@@ -10,6 +13,9 @@ typedef UINT8  Byte;
 // A generic kernel pointer
 typedef Qword kAddress;
 
-constexpr kAddress kNullptr = 0;
+// we're using it a lot
+using std::optional;
 
-#include "Globals.h"
+using ReadonlyRegion_t = std::span<const Byte>;
+
+constexpr kAddress kNullptr = 0;
