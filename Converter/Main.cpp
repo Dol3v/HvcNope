@@ -1,29 +1,6 @@
 
 // Declares clang::SyntaxOnlyAction.
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-// Declares llvm::cl::extrahelp.
-#include "llvm/Support/CommandLine.h"
-
-#include "clang/Driver/Options.h"
-#include "clang/AST/AST.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/ASTConsumers.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Tooling.h"
-#include "clang/Rewrite/Core/Rewriter.h"
-
-using namespace std;
-using namespace clang;
-using namespace clang::driver;
-using namespace clang::tooling;
-using namespace llvm;
-
+#include "pch.h"    
 #include <iostream>
 
 
@@ -42,6 +19,13 @@ public:
         rewriter.setSourceMgr( astContext->getSourceManager(),
             astContext->getLangOpts() );
     }
+
+    virtual bool VisitAttr(Attr* attr) {
+        outs() << "Found attribute!\n";
+        attr->getLocation().dump( astContext->getSourceManager() );
+        return true;
+    }
+    
 
     virtual bool VisitFunctionDecl( FunctionDecl* func ) {
         numFunctions++;
@@ -67,21 +51,51 @@ public:
 };
 
 
+auto pointerWithKernelAttrMatcher =
+varDecl(
+    hasType( pointerType() ),
+    hasAttr( clang::attr::Annotate ) // GCC/Clang-style __attribute__((annotate("kernel")))
+).bind( "ptrWithKernel" );
+
+class PointerWithKernelAttrPrinter : public MatchFinder::MatchCallback {
+public:
+    virtual void run( const MatchFinder::MatchResult& Result ) {
+        if (const VarDecl* VD = Result.Nodes.getNodeAs<VarDecl>( "ptrWithKernel" )) {
+            if (const AnnotateAttr* AA = VD->getAttr<AnnotateAttr>()) {
+                VD->dump();  // Dumps AST information for the matched node.
+
+                llvm::outs() << "Found a pointer declaration with 'kernel' attribute: "
+                    << VD->getNameAsString() << "\n";
+
+            }
+            /*    else if (VD->hasAttr<MSDeclSpecAttr>()) {
+                    llvm::outs() << "This is MSVC-style __declspec(kernel)\n";
+                }*/
+        }
+    }
+};
+
+
 class ExampleASTConsumer : public ASTConsumer {
 private:
     ExampleVisitor* visitor; // doesn't have to be private
+    MatchFinder matcher;
+    PointerWithKernelAttrPrinter printer;
 
 public:
     // override the constructor in order to pass CI
     explicit ExampleASTConsumer( CompilerInstance* CI )
         : visitor( new ExampleVisitor( CI ) ) // initialize the visitor
-    { }
+    {
+        matcher.addMatcher( pointerWithKernelAttrMatcher, &printer);
+    }
 
     // override this to call our ExampleVisitor on the entire source file
     virtual void HandleTranslationUnit( ASTContext& Context ) {
         /* we can use ASTContext to get the TranslationUnitDecl, which is
              a single Decl that collectively represents the entire source file */
-        visitor->TraverseDecl( Context.getTranslationUnitDecl() );
+        //visitor->TraverseDecl( Context.getTranslationUnitDecl() );
+        matcher.matchAST( Context );
     }
 
 };
@@ -112,16 +126,8 @@ int main( int argc, const char** argv ) {
         errs() << "\nUnexpected arguments\n";
         return 1;
     }
-
-    // create a new Clang Tool instance (a LibTooling environment)
     ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
 
-    // run the Clang Tool, creating a new FrontendAction (explained below)
     int result = Tool.run( newFrontendActionFactory<ExampleFrontendAction>().get() );
-
-    errs() << "\nFound " << numFunctions << " functions.\n\n";
-    // print out the rewritten source code ("rewriter" is a global var.)
-
-    std::cin.get();
     return result;
 }
