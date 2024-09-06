@@ -1,4 +1,6 @@
 
+#include "a/hello.h"
+
 #define MY_ATTRIBUTE __attribute__((annotate("kernel")))
 
 void do_math( int* x ) {
@@ -25,6 +27,7 @@ int main( void ) {
 
     void* MY_ATTRIBUTE c = func();
 
+    int d = func2();
 
     return result;
 }

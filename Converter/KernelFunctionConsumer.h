@@ -50,14 +50,14 @@ private:
 	Rewriter R;
 };
 
-//class KernelCallRewriter : public RecursiveASTVisitor<KernelCallRewriter> {
-//public:
-//	KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& KernelFunctions );
-//
-//	virtual bool VisitCallExpr( CallExpr* Call );
-//
-//private:
-//	ASTContext* Context;
-//	Rewriter& R;
-//	const std::set<std::string>& KernelFunctions;
-//};
+class KernelCallRewriter : public RecursiveASTVisitor<KernelCallRewriter> {
+public:
+	KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& KernelFunctions );
+
+	virtual bool VisitCallExpr( CallExpr* Call );
+
+private:
+	ASTContext* Context;
+	Rewriter& R;
+	const std::set<std::string>& KernelFunctions;
+};

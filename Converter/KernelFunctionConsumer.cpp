@@ -2,9 +2,9 @@
 #include "pch.h"
 #include "KernelFunctionConsumer.h"
 
-KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& R ) :
+KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rw ) :
 	Finder(Context, KernelFunctions),
-	R(Context->getSourceManager(), Context->getLangOpts())
+	R( Rw )
 {
 }
 
@@ -14,17 +14,17 @@ void KernelFunctionConsumer::HandleTranslationUnit( ASTContext& Context )
 	Finder.TraverseDecl( Context.getTranslationUnitDecl() );
 
 	// Rewrite all function calls
-	/*KernelCallRewriter callRewriter( &Context, R, KernelFunctions );
-	callRewriter.TraverseDecl( Context.getTranslationUnitDecl() );*/
+	KernelCallRewriter callRewriter( &Context, R, KernelFunctions );
+	callRewriter.TraverseDecl( Context.getTranslationUnitDecl() );
 
 
 	// Log rewritten stuff to file
-	//auto& SM = Context.getSourceManager();
-	//auto currentFileId = SM.getMainFileID();
+	auto& SM = Context.getSourceManager();
+	auto currentFileId = SM.getMainFileID();
 
-	//outs() << "Rewrote " << SM.getFileEntryForID( currentFileId )->tryGetRealPathName() << "\n";
+	outs() << "Rewrote " << SM.getFileEntryForID( currentFileId )->tryGetRealPathName() << "\n";
 
-	//R.getRewriteBufferFor( currentFileId )->write(outs());
+	R.getRewriteBufferFor( currentFileId )->write(outs());
 }
 
 KernelFunctionFinder::KernelFunctionFinder( ASTContext* Context, std::set<std::string>& Functions ) :
@@ -49,13 +49,20 @@ bool KernelFunctionFinder::VisitFunctionDecl( FunctionDecl* FD )
 
 bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 {
+	SourceManager& SM = Context->getSourceManager();
+
+	auto currentFilename = SM.getFilename( Call->getBeginLoc() ).str();
+	outs() << "Looking at " << currentFilename << "\n";
+
 	if (FunctionDecl* FD = Call->getDirectCallee()) {
 		SourceLocation loc = FD->getLocation();
 		if (loc.isValid()) {
-			SourceManager& SM = Context->getSourceManager();
-			auto filename = SM.getFilename( loc ).str();
-
-			outs() << "Call to function " << FD->getNameAsString() << " has valid location, filename " << filename << "\n";
+			auto declarationFilePath = SM.getFilename( loc ).str();
+			if (IsFileInWdkKm( declarationFilePath )) {
+				// kernel function, add
+				KernelFunctions.insert( FD->getNameAsString() );
+				outs() << "Function " << FD->getNameAsString() << " is kernel, defined in headers\n";
+			}
 		}
 		else {
 			errs() << "Call to function " << FD->getNameAsString() << " has invalid location\n";
@@ -64,16 +71,44 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 	return true;
 }
 
-//bool KernelFunctionFinder::IsFileInWdkKm( const std::string_view Filename )
-//{
-//	return true;
-//}
-//
-//KernelCallRewriter::KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& KernelFunctions )
-//{
-//}
-//
-//bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
-//{
-//	return true;
-//}
+bool KernelFunctionFinder::IsFileInWdkKm( const std::string_view Filename )
+{
+	return true;
+}
+
+KernelCallRewriter::KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& Functions )
+	: Context(Context), R(R), KernelFunctions(Functions)
+{
+}
+
+bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
+{
+	if (FunctionDecl* FD = Call->getDirectCallee()) {
+		std::string functionName = FD->getNameInfo().getName().getAsString();
+
+		// Check if the function is in our target list
+		if (KernelFunctions.find( functionName ) != KernelFunctions.end()) {
+			SourceManager& SM = Context->getSourceManager();
+			SourceLocation startLoc = Call->getBeginLoc();
+
+			// Generate new call expression
+			std::string newCall = "g_Invoker.Call(\"" + functionName + "\"";
+
+			// Add each argument
+			for (unsigned i = 0; i < Call->getNumArgs(); ++i) {
+				Expr* arg = Call->getArg( i );
+				newCall += ", ";
+				std::string ArgStr;
+				llvm::raw_string_ostream ArgStream( ArgStr );
+				arg->printPretty( ArgStream, nullptr, Context->getPrintingPolicy() );
+				newCall += ArgStream.str();
+			}
+
+			newCall += ")";
+
+			// Replace the original function call with the new one
+			R.ReplaceText( Call->getSourceRange(), newCall );
+		}
+	}
+	return true;
+}

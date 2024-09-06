@@ -107,7 +107,7 @@
       <AdditionalIncludeDirectories>$(USERPROFILE)\llvm-project\clang\include;$(USERPROFILE)\llvm-project\llvm\include;$(USERPROFILE)\llvm-project\build\include;$(USERPROFILE)\llvm-project\build\tools\clang\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DisableSpecificWarnings>4146</DisableSpecificWarnings>
-      <AdditionalOptions>/Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zc:preprocessor /bigobj %(AdditionalOptions)</AdditionalOptions>
       <PrecompiledHeader>Create</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
@@ -129,7 +129,7 @@
       <AdditionalIncludeDirectories>$(USERPROFILE)\llvm-project\clang\include;$(USERPROFILE)\llvm-project\llvm\include;$(USERPROFILE)\llvm-project\build\include;$(USERPROFILE)\llvm-project\build\tools\clang\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DisableSpecificWarnings>4146</DisableSpecificWarnings>
-      <AdditionalOptions>/Zc:preprocessor %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Zc:preprocessor /bigobj %(AdditionalOptions)</AdditionalOptions>
       <PrecompiledHeader>Create</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
