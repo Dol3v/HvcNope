@@ -2,60 +2,22 @@
 // Declares clang::SyntaxOnlyAction.
 #include "pch.h"    
 #include <iostream>
+#include "KernelFunctionConsumer.h"
 
 
 Rewriter rewriter;
 int numFunctions = 0;
 llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
 
-class ExampleVisitor : public RecursiveASTVisitor<ExampleVisitor> {
-private:
-    ASTContext* astContext; // used for getting additional AST info
 
-public:
-    explicit ExampleVisitor( CompilerInstance* CI )
-        : astContext( &(CI->getASTContext()) ) // initialize private members
-    {
-        rewriter.setSourceMgr( astContext->getSourceManager(),
-            astContext->getLangOpts() );
-    }
+DeclarationMatcher PointerWithAnnotationAttributeMatcher =
+    varDecl(
+        hasType( pointerType() ),
+        hasAttr( clang::attr::Annotate)
+    ).bind( "ptrWithKernel" );
 
-    virtual bool VisitAttr(Attr* attr) {
-        outs() << "Found attribute!\n";
-        attr->getLocation().dump( astContext->getSourceManager() );
-        return true;
-    }
-    
-
-    virtual bool VisitFunctionDecl( FunctionDecl* func ) {
-        numFunctions++;
-        string funcName = func->getNameInfo().getName().getAsString();
-        if (funcName == "do_math") {
-            rewriter.ReplaceText( func->getLocation(), funcName.length(), "add5" );
-            errs() << "** Rewrote function def: " << funcName << "\n";
-        }
-        return true;
-    }
-
-    virtual bool VisitStmt( Stmt* st ) {
-        if (ReturnStmt* ret = dyn_cast<ReturnStmt>(st)) {
-            rewriter.ReplaceText( ret->getRetValue()->getBeginLoc(), 6, "val" );
-            errs() << "** Rewrote ReturnStmt\n";
-        }
-        if (CallExpr* call = dyn_cast<CallExpr>(st)) {
-            rewriter.ReplaceText( call->getBeginLoc(), 7, "add5" );
-            errs() << "** Rewrote function call\n";
-        }
-        return true;
-    }
-};
-
-
-auto pointerWithKernelAttrMatcher =
-varDecl(
-    hasType( pointerType() ),
-    hasAttr( clang::attr::Annotate ) // GCC/Clang-style __attribute__((annotate("kernel")))
-).bind( "ptrWithKernel" );
+//StatementMatcher PossibleKernelPointerUsageMatcher = 
+//    declRefExpr(to())
 
 class PointerWithKernelAttrPrinter : public MatchFinder::MatchCallback {
 public:
@@ -76,18 +38,26 @@ public:
 };
 
 
-class ExampleASTConsumer : public ASTConsumer {
+class MainConsumer : public ASTConsumer {
 private:
-    ExampleVisitor* visitor; // doesn't have to be private
+    std::unique_ptr<KernelFunctionConsumer> kernelFunctionConsumer;
+
     MatchFinder matcher;
     PointerWithKernelAttrPrinter printer;
 
+    Rewriter rewriter;
+
 public:
     // override the constructor in order to pass CI
-    explicit ExampleASTConsumer( CompilerInstance* CI )
-        : visitor( new ExampleVisitor( CI ) ) // initialize the visitor
+    explicit MainConsumer( CompilerInstance* CI ) : rewriter()
     {
-        matcher.addMatcher( pointerWithKernelAttrMatcher, &printer);
+        matcher.addMatcher( PointerWithAnnotationAttributeMatcher, &printer);
+
+        ASTContext* context = &CI->getASTContext();
+        rewriter.setSourceMgr( context->getSourceManager(), context->getLangOpts() );
+
+        // initialize consumer(s)
+        kernelFunctionConsumer = make_unique<KernelFunctionConsumer>( context, rewriter );
     }
 
     // override this to call our ExampleVisitor on the entire source file
@@ -96,13 +66,14 @@ public:
              a single Decl that collectively represents the entire source file */
         //visitor->TraverseDecl( Context.getTranslationUnitDecl() );
         matcher.matchAST( Context );
+
+        // call all consumers
+        kernelFunctionConsumer->HandleTranslationUnit( Context );
     }
 
 };
 
-
-
-class ExampleFrontendAction : public ASTFrontendAction {
+class HvcnopeFrontendAction : public ASTFrontendAction {
 public:
 
     void EndSourceFileAction() override {
@@ -111,7 +82,7 @@ public:
     }
 
     virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
-        return  std::unique_ptr<ASTConsumer>( new ExampleASTConsumer( &CI ) ); // pass CI pointer to ASTConsumer
+        return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI ) );
     }
 };
 
@@ -128,6 +99,6 @@ int main( int argc, const char** argv ) {
     }
     ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
 
-    int result = Tool.run( newFrontendActionFactory<ExampleFrontendAction>().get() );
+    int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
     return result;
 }
