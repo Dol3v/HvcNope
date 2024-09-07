@@ -302,3 +302,89 @@ void Hvcnope__outwordstring( unsigned short Port, unsigned short* Buffer, unsign
 		Port += sizeof( unsigned short );
 	}
 }
+
+//
+// GS Intrinsics
+//
+
+kAddress GetGsBase() 
+{
+	constexpr unsigned long IA32_KERNEL_GS_BASE = 0xC0000102;
+	return kAddress( Hvcnope_readmsr( IA32_KERNEL_GS_BASE ) );
+}
+
+unsigned char Hvcnope__readgsbyte( unsigned long Offset ) {
+	return g_Rw->ReadByte( GetGsBase() + Offset );
+}
+
+unsigned short Hvcnope__readgsword( unsigned long Offset ) {
+	return g_Rw->ReadWord( GetGsBase() + Offset );
+}
+
+unsigned long Hvcnope__readgsdword( unsigned long Offset ) {
+	return g_Rw->ReadDword( GetGsBase() + Offset );
+}
+
+unsigned long long Hvcnope__readgsqword( unsigned long Offset ) {
+	return g_Rw->ReadQword( GetGsBase() + Offset );
+}
+
+void Hvcnope__writegsbyte( unsigned long Offset, unsigned char Data ) {
+	g_Rw->WriteByte( GetGsBase() + Offset, Data );
+}
+
+void Hvcnope__writegsword( unsigned long Offset, unsigned short Data ) {
+	g_Rw->WriteWord( GetGsBase() + Offset, Data );
+}
+
+void Hvcnope__writegsdword( unsigned long Offset, unsigned long Data ) {
+	g_Rw->WriteDword( GetGsBase() + Offset, Data );
+}
+
+void Hvcnope__writegsqword( unsigned long Offset, unsigned long long Data ) {
+	g_Rw->WriteQword( GetGsBase() + Offset, Data );
+}
+
+void Hvcnope__incgsbyte( unsigned long Offset ) {
+	Byte value = Hvcnope__readgsbyte( Offset );
+	value++;
+	Hvcnope__writegsbyte( Offset, value );
+}
+
+void Hvcnope__incgsword( unsigned long Offset ) {
+	Word value = Hvcnope__readgsword( Offset );
+	value++;
+	Hvcnope__writegsword( Offset, value );
+}
+
+void Hvcnope__incgsdword( unsigned long Offset ) {
+	Dword value = Hvcnope__readgsdword( Offset );
+	value++;
+	Hvcnope__writegsdword( Offset, value );
+}
+
+void Hvcnope__incgsqword( unsigned long Offset ) {
+	Qword value = Hvcnope__readgsqword( Offset );
+	value++;
+	Hvcnope__writegsqword( Offset, value );
+}
+
+void Hvcnope__addgsbyte( unsigned long Offset, unsigned char Value ) {
+	Byte result = Hvcnope__readgsbyte( Offset ) + Value;
+	Hvcnope__writegsbyte( Offset, result );
+}
+
+void Hvcnope__addgsword( unsigned long Offset, unsigned short Value ) {
+	Word result = Hvcnope__readgsword( Offset ) + Value;
+	Hvcnope__writegsword( Offset, result );
+}
+
+void Hvcnope__addgsdword( unsigned long Offset, unsigned long Value ) {
+	Dword result = Hvcnope__readgsdword( Offset ) + Value;
+	Hvcnope__writegsdword( Offset, result );
+}
+
+void Hvcnope__addgsqword( unsigned long Offset, unsigned long long Value ) {
+	Qword result = Hvcnope__readgsqword( Offset ) + Value;
+	Hvcnope__writegsqword( Offset, result );
+}
