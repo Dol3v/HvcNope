@@ -187,6 +187,8 @@ NumericType ReadIoSpace( unsigned short Port )
 		LOG_FAIL( "Failed to call KdpSysReadIoSpace, status=0x%x", status );
 		throw std::exception();
 	}
+
+	return value;
 }
 
 unsigned char Hvcnope__inbyte( unsigned short Port )
