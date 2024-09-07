@@ -129,6 +129,12 @@ optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword
 	return std::nullopt;
 }
 
+std::optional<kAddress> KernelBinary::FindSignature( std::vector<Sig::SigByte>& Signature, Dword Flags ) const
+{
+	Sig::Signature_t sig = Sig::Signature_t(&Signature[0], Signature.size());
+	return FindSignature( sig, Flags );
+}
+
 void KernelBinary::ForEveryCodeSignatureOccurrence(
 	Sig::Signature_t Signature,
 	std::function<bool(const Byte*)> Consumer) const

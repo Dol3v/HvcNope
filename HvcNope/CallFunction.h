@@ -79,6 +79,9 @@ public:
 		CloseHandle( thread );
 	}
 
+	//
+	// Calls a kernel function by its address. Note that SMAP is off.
+	//
 	template <typename... Args>
 	Qword CallKernelFunction(
 		kAddress Function,

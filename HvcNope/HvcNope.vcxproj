@@ -130,6 +130,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ByteSignature.cpp" />
+    <ClCompile Include="Intrinsics.cpp" />
     <ClCompile Include="KernelBinary.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="Main.cpp" />
@@ -141,6 +142,7 @@
   <ItemGroup>
     <ClInclude Include="ByteSignature.h" />
     <ClInclude Include="CallFunction.h" />
+    <ClInclude Include="Intrinsics.h" />
     <ClInclude Include="MockDriver.h" />
     <ClInclude Include="Nt.h" />
     <ClInclude Include="Offsets.h" />

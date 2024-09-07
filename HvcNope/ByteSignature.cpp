@@ -42,6 +42,11 @@ namespace Sig
         return result;
     }
 
+    Signature_t FromVector( std::vector<Sig::SigByte>& Vec )
+    {
+        return Signature_t(Vec.data(), Vec.size());
+    }
+
 
     std::optional<size_t> FindSignatureInBuffer(ReadonlyRegion_t Buffer, Signature_t Signature)
     {
