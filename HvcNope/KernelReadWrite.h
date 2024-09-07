@@ -48,4 +48,55 @@ public:
 			current += sizeof( Qword );
 		}
 	}
+
+	virtual Byte ReadByte( kAddress address ) {
+		Qword qword = ReadQword( (kAddress)((uintptr_t)address & ~0x7) );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+		return (Byte)(qword >> (byteOffset * 8));
+	}
+
+	virtual void WriteByte( kAddress address, Byte data ) {
+		kAddress alignedAddress = (kAddress)((uintptr_t)address & ~0x7);
+		Qword qword = ReadQword( alignedAddress );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+
+		qword &= ~(0xFFULL << (byteOffset * 8));
+		qword |= ((Qword)data << (byteOffset * 8));
+
+		WriteQword( alignedAddress, qword );
+	}
+
+	virtual Word ReadWord( kAddress address ) {
+		Qword qword = ReadQword( (kAddress)((uintptr_t)address & ~0x7) );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+		return (Word)(qword >> (byteOffset * 8));
+	}
+
+	virtual void WriteWord( kAddress address, Word data ) {
+		kAddress alignedAddress = (kAddress)((uintptr_t)address & ~0x7);
+		Qword qword = ReadQword( alignedAddress );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+
+		qword &= ~(0xFFFFULL << (byteOffset * 8));
+		qword |= ((Qword)data << (byteOffset * 8));
+
+		WriteQword( alignedAddress, qword );
+	}
+
+	virtual Dword ReadDword( kAddress address ) {
+		Qword qword = ReadQword( (kAddress)((uintptr_t)address & ~0x7) );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+		return (Dword)(qword >> (byteOffset * 8));
+	}
+
+	virtual void WriteDword( kAddress address, Dword data ) {
+		kAddress alignedAddress = (kAddress)((uintptr_t)address & ~0x7);
+		Qword qword = ReadQword( alignedAddress );
+		size_t byteOffset = (uintptr_t)address & 0x7;
+
+		qword &= ~(0xFFFFFFFFULL << (byteOffset * 8));
+		qword |= ((Qword)data << (byteOffset * 8));
+
+		WriteQword( alignedAddress, qword );
+	}
 };
