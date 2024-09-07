@@ -1,10 +1,11 @@
 
 #include "pch.h"
 #include "KernelFunctionConsumer.h"
+#include "Utils.h"
 
-KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rw ) :
+KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rewriter ) :
 	Finder(Context, KernelFunctions),
-	R( Rw )
+	R( Rewriter )
 {
 }
 
@@ -23,8 +24,6 @@ void KernelFunctionConsumer::HandleTranslationUnit( ASTContext& Context )
 	auto currentFileId = SM.getMainFileID();
 
 	outs() << "Rewrote " << SM.getFileEntryForID( currentFileId )->tryGetRealPathName() << "\n";
-
-	R.getRewriteBufferFor( currentFileId )->write(outs());
 }
 
 KernelFunctionFinder::KernelFunctionFinder( ASTContext* Context, std::set<std::string>& Functions ) :
@@ -71,9 +70,14 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 	return true;
 }
 
-bool KernelFunctionFinder::IsFileInWdkKm( const std::string_view Filename )
+bool KernelFunctionFinder::IsFileInWdkKm( const std::string_view FilePath )
 {
-	return true;
+	namespace fs = std::filesystem;
+
+	// test
+	fs::path wdk = R"(C:\Users\dol12\source\repos\Dol3v\HvcNope\Converter\a)";
+
+	return Utils::IsChildFolder(wdk, FilePath);
 }
 
 KernelCallRewriter::KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& Functions )
@@ -94,15 +98,11 @@ bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
 			// Generate new call expression
 			std::string newCall = "g_Invoker.Call(\"" + functionName + "\"";
 
-			// Add each argument
-			for (unsigned i = 0; i < Call->getNumArgs(); ++i) {
-				Expr* arg = Call->getArg( i );
-				newCall += ", ";
-				std::string ArgStr;
-				llvm::raw_string_ostream ArgStream( ArgStr );
-				arg->printPretty( ArgStream, nullptr, Context->getPrintingPolicy() );
-				newCall += ArgStream.str();
-			}
+			newCall += Utils::DumpCallArguments( 
+				Call,
+				Context->getPrintingPolicy(),
+				/*AddDelimeterAtStart=*/true
+			);
 
 			newCall += ")";
 

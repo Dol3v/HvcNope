@@ -1,4 +1,10 @@
 
+//#include "a/hello.h"
+
+//#define _AMD64_
+//#include "ntddk.h"
+
+#include <intrin.h> // Include this header for intrinsics
 #include "a/hello.h"
 
 #define MY_ATTRIBUTE __attribute__((annotate("kernel")))
@@ -26,6 +32,8 @@ int main( void ) {
     void* MY_ATTRIBUTE b = nullptr;
 
     void* MY_ATTRIBUTE c = func();
+
+    unsigned long long val2 = __readmsr( 0x600 );
 
     int d = func2();
 

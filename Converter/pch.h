@@ -18,6 +18,9 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/CodeGen/CodeGenAction.h"
+#include "llvm/IR/Module.h" 
+#include "llvm/Support/TargetSelect.h"
 
 using namespace std;
 

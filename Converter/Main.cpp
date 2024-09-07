@@ -3,10 +3,9 @@
 #include "pch.h"    
 #include <iostream>
 #include "KernelFunctionConsumer.h"
+#include "ReplaceIntrinisicsConsumer.h"
 
 
-Rewriter rewriter;
-int numFunctions = 0;
 llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
 
 
@@ -41,15 +40,16 @@ public:
 class MainConsumer : public ASTConsumer {
 private:
     std::unique_ptr<KernelFunctionConsumer> kernelFunctionConsumer;
+    std::unique_ptr<ReplaceIntrinsicsConsumer> intrinsicsConsumer;
 
     MatchFinder matcher;
     PointerWithKernelAttrPrinter printer;
 
-    Rewriter rewriter;
+    Rewriter& rewriter;
 
 public:
     // override the constructor in order to pass CI
-    explicit MainConsumer( CompilerInstance* CI ) : rewriter()
+    explicit MainConsumer( CompilerInstance* CI, Rewriter& R ) : rewriter(R)
     {
         matcher.addMatcher( PointerWithAnnotationAttributeMatcher, &printer);
 
@@ -58,32 +58,32 @@ public:
 
         // initialize consumer(s)
         kernelFunctionConsumer = make_unique<KernelFunctionConsumer>( context, rewriter );
+        intrinsicsConsumer = make_unique<ReplaceIntrinsicsConsumer>( context, rewriter );
     }
 
     // override this to call our ExampleVisitor on the entire source file
     virtual void HandleTranslationUnit( ASTContext& Context ) {
-        /* we can use ASTContext to get the TranslationUnitDecl, which is
-             a single Decl that collectively represents the entire source file */
-        //visitor->TraverseDecl( Context.getTranslationUnitDecl() );
         matcher.matchAST( Context );
 
         // call all consumers
         kernelFunctionConsumer->HandleTranslationUnit( Context );
+        intrinsicsConsumer->HandleTranslationUnit( Context );
     }
-
 };
 
 class HvcnopeFrontendAction : public ASTFrontendAction {
 public:
-
     void EndSourceFileAction() override {
-        llvm::outs() << "END OF FILE ACTION:\n";
-        rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( errs() );
+        outs() << "END OF FILE ACTION:\n";
+        rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outs() );
     }
 
     virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
-        return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI ) );
+        return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
     }
+
+private:
+    Rewriter rewriter;
 };
 
 
@@ -98,7 +98,6 @@ int main( int argc, const char** argv ) {
         return 1;
     }
     ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
-
     int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
     return result;
 }
