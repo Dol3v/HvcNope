@@ -6,7 +6,8 @@ class ReplaceIntrinsicsVisitor : public RecursiveASTVisitor<ReplaceIntrinsicsVis
 private:
 	Rewriter& R;
 	ASTContext* Context;
-	std::set<std::string> KernelGsFunctionNames;
+	//std::set<std::string> KernelGsFunctionNames;
+	std::vector<clang::SourceRange> KernelGsSourceRanges;
 	
 
 	// Names of intrinsics functions mapped to wrapper implementation names
@@ -35,7 +36,7 @@ public:
 	virtual bool VisitFunctionDecl( FunctionDecl* FD );
 
 private:
-	static std::optional<std::string> GetIntrinsicWrapperNameIfNecessary( CallExpr* Call );
+	std::optional<std::string> GetIntrinsicWrapperNameIfNecessary( CallExpr* Call );
 };
 
 //

@@ -71,20 +71,26 @@ std::optional<std::string> ReplaceIntrinsicsVisitor::GetIntrinsicWrapperNameIfNe
 
 		if (GsIntrinsicNamesToFunctions.find( calleeName ) != GsIntrinsicNamesToFunctions.end()) 
 		{
-			// get call declaration
-			//if (auto declContext = Call..get)
+			// check if CallExpr is inside known GS source range
+			for ( SourceRange gsRange : KernelGsSourceRanges )
+			{
+				if (gsRange.fullyContains( Call->getSourceRange() )) {
+					return GsIntrinsicNamesToFunctions.at( calleeName );
+				}
+			}
 		}
+
+		return std::nullopt;
 	}
 }
 
 bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 {	
 	if (const FunctionDecl* FD = Call->getDirectCallee()) {
-		std::string functionName = FD->getNameAsString();
-		if (IntrinsicNamesToFunctions.find( functionName ) != IntrinsicNamesToFunctions.end()) {
-			std::string implementationName = IntrinsicNamesToFunctions.at(functionName);
-
-			std::string newCall = implementationName + "(";
+		auto wrapperName = GetIntrinsicWrapperNameIfNecessary( Call );
+		if (wrapperName) {
+			// replace call
+			std::string newCall = wrapperName.value() + "(";
 			newCall += Utils::DumpCallArguments( Call, Context->getPrintingPolicy() );
 			newCall += ")";
 
@@ -98,8 +104,13 @@ bool ReplaceIntrinsicsVisitor::VisitFunctionDecl( FunctionDecl* FD )
 {
 	if (AnnotateAttr* attr = FD->getAttr<AnnotateAttr>()) {
 		if (attr->getAnnotation() == "kernel_gs") {
-			KernelGsFunctionNames.insert( FD->getNameAsString() );
+			//KernelGsFunctionNames.insert( FD->getNameAsString() );
+			FD->getSourceRange().dump(Context->getSourceManager());
+
+			// TODO: handle headers, use sorted vec
+			KernelGsSourceRanges.push_back( FD->getSourceRange() );
 		}
 	}
+
 	return true;
 }

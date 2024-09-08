@@ -20,6 +20,11 @@ namespace Utils {
 		bool AddDelimeterAtStart = false,
 		std::string_view Delimiter = ", " );
 
+	std::optional<const FunctionDecl*> GetContainingFunctionDecl(
+		const CallExpr* Call,
+		ASTContext* Context
+	);
+
 	namespace fs = std::filesystem;
 
 	bool IsChildFolder( const fs::path& Parent, const fs::path& Child );
