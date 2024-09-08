@@ -10,94 +10,100 @@ llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
 
 
 DeclarationMatcher PointerWithAnnotationAttributeMatcher =
-    varDecl(
-        hasType( pointerType() ),
-        hasAttr( clang::attr::Annotate)
-    ).bind( "ptrWithKernel" );
+varDecl(
+	hasType( pointerType() ),
+	hasAttr( clang::attr::Annotate )
+).bind( "ptrWithKernel" );
 
 //StatementMatcher PossibleKernelPointerUsageMatcher = 
 //    declRefExpr(to())
 
 class PointerWithKernelAttrPrinter : public MatchFinder::MatchCallback {
 public:
-    virtual void run( const MatchFinder::MatchResult& Result ) {
-        if (const VarDecl* VD = Result.Nodes.getNodeAs<VarDecl>( "ptrWithKernel" )) {
-            if (const AnnotateAttr* AA = VD->getAttr<AnnotateAttr>()) {
-                VD->dump();  // Dumps AST information for the matched node.
+	virtual void run( const MatchFinder::MatchResult& Result ) {
+		if (const VarDecl* VD = Result.Nodes.getNodeAs<VarDecl>( "ptrWithKernel" )) {
+			if (const AnnotateAttr* AA = VD->getAttr<AnnotateAttr>()) {
+				VD->dump();  // Dumps AST information for the matched node.
 
-                llvm::outs() << "Found a pointer declaration with 'kernel' attribute: "
-                    << VD->getNameAsString() << "\n";
+				llvm::outs() << "Found a pointer declaration with 'kernel' attribute: "
+					<< VD->getNameAsString() << "\n";
 
-            }
-            /*    else if (VD->hasAttr<MSDeclSpecAttr>()) {
-                    llvm::outs() << "This is MSVC-style __declspec(kernel)\n";
-                }*/
-        }
-    }
+			}
+		}
+	}
 };
 
 
 class MainConsumer : public ASTConsumer {
 private:
-    std::unique_ptr<KernelFunctionConsumer> kernelFunctionConsumer;
-    std::unique_ptr<ReplaceIntrinsicsConsumer> intrinsicsConsumer;
+	std::unique_ptr<KernelFunctionConsumer> kernelFunctionConsumer;
+	std::unique_ptr<ReplaceIntrinsicsConsumer> intrinsicsConsumer;
 
-    MatchFinder matcher;
-    PointerWithKernelAttrPrinter printer;
+	MatchFinder Matcher;
+	PointerWithKernelAttrPrinter printer;
 
-    Rewriter& rewriter;
+	Rewriter& rewriter;
+	bool includeHeader;
 
 public:
-    // override the constructor in order to pass CI
-    explicit MainConsumer( CompilerInstance* CI, Rewriter& R ) : rewriter(R)
-    {
-        matcher.addMatcher( PointerWithAnnotationAttributeMatcher, &printer);
+	explicit MainConsumer( CompilerInstance* CI, Rewriter& R ) : rewriter( R ), includeHeader( false )
+	{
+		Matcher.addMatcher( PointerWithAnnotationAttributeMatcher, &printer );
 
-        ASTContext* context = &CI->getASTContext();
-        rewriter.setSourceMgr( context->getSourceManager(), context->getLangOpts() );
+		ASTContext* context = &CI->getASTContext();
+		rewriter.setSourceMgr( context->getSourceManager(), context->getLangOpts() );
 
-        // initialize consumer(s)
-        kernelFunctionConsumer = make_unique<KernelFunctionConsumer>( context, rewriter );
-        intrinsicsConsumer = make_unique<ReplaceIntrinsicsConsumer>( context, rewriter );
-    }
+		// initialize consumer(s)
+		kernelFunctionConsumer = make_unique<KernelFunctionConsumer>( context, rewriter, includeHeader );
+		intrinsicsConsumer = make_unique<ReplaceIntrinsicsConsumer>( context, rewriter, includeHeader );
+	}
 
-    // override this to call our ExampleVisitor on the entire source file
-    virtual void HandleTranslationUnit( ASTContext& Context ) {
-        matcher.matchAST( Context );
+	virtual void HandleTranslationUnit( ASTContext& Context ) {
+		Matcher.matchAST( Context );
 
-        // call all consumers
-        kernelFunctionConsumer->HandleTranslationUnit( Context );
-        intrinsicsConsumer->HandleTranslationUnit( Context );
-    }
+		// call all consumers
+		kernelFunctionConsumer->HandleTranslationUnit( Context );
+		intrinsicsConsumer->HandleTranslationUnit( Context );
+
+		if (includeHeader) {
+			// add library include
+			SourceManager& SM = Context.getSourceManager();
+			FileID currentFileId = SM.getMainFileID();
+
+			SourceLocation fileStart = SM.getLocForStartOfFile( currentFileId );
+
+			std::string include = "#include <Hvcnope.h>\n";
+			rewriter.InsertText( fileStart, include, false );
+		}
+	}
 };
 
 class HvcnopeFrontendAction : public ASTFrontendAction {
 public:
-    void EndSourceFileAction() override {
-        outs() << "END OF FILE ACTION:\n";
-        rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outs() );
-    }
+	void EndSourceFileAction() override {
+		outs() << "END OF FILE ACTION:\n";
+		rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outs() );
+	}
 
-    virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
-        return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
-    }
+	virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
+		return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
+	}
 
 private:
-    Rewriter rewriter;
+	Rewriter rewriter;
 };
 
 
 extern llvm::cl::OptionCategory MyToolCategory;
 
-int main( int argc, const char** argv ) {
-    // parse the command-line args passed to your code
-    //CommonOptionsParser op( argc, argv, MyToolCategory );
-    auto op = CommonOptionsParser::create( argc, argv, MyToolCategory );
-    if (op.takeError()) {
-        errs() << "\nUnexpected arguments\n";
-        return 1;
-    }
-    ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
-    int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
-    return result;
+int main( int argc, const char** argv ) 
+{
+	auto op = CommonOptionsParser::create( argc, argv, MyToolCategory );
+	if (op.takeError()) {
+		errs() << "\nUnexpected arguments\n";
+		return 1;
+	}
+	ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
+	int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
+	return result;
 }

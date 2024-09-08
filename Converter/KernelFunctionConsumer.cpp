@@ -3,11 +3,9 @@
 #include "KernelFunctionConsumer.h"
 #include "Utils.h"
 
-KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rewriter ) :
-	Finder(Context, KernelFunctions),
-	R( Rewriter )
-{
-}
+KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rewriter, bool& IncludeLibraryHeader ) :
+	Finder(Context, KernelFunctions, IncludeLibraryHeader),
+	R( Rewriter ) {}
 
 void KernelFunctionConsumer::HandleTranslationUnit( ASTContext& Context )
 {
@@ -26,10 +24,8 @@ void KernelFunctionConsumer::HandleTranslationUnit( ASTContext& Context )
 	outs() << "Rewrote " << SM.getFileEntryForID( currentFileId )->tryGetRealPathName() << "\n";
 }
 
-KernelFunctionFinder::KernelFunctionFinder( ASTContext* Context, std::set<std::string>& Functions ) :
-	Context(Context), KernelFunctions( Functions )
-{
-}
+KernelFunctionFinder::KernelFunctionFinder( ASTContext* Context, std::set<std::string>& Functions, bool& IncludeLibraryHeader ) :
+	Context(Context), KernelFunctions( Functions ), IncludeLibraryHeader(IncludeLibraryHeader) {}
 
 bool KernelFunctionFinder::VisitFunctionDecl( FunctionDecl* FD )
 {
@@ -61,6 +57,10 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 				// kernel function, add
 				KernelFunctions.insert( FD->getNameAsString() );
 				outs() << "Function " << FD->getNameAsString() << " is kernel, defined in headers\n";
+
+
+				// we've found a call to a kernel function, should include header for call
+				IncludeLibraryHeader = true;
 			}
 		}
 		else {

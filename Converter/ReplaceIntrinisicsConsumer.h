@@ -22,8 +22,10 @@ private:
 	//
 	static const std::map<std::string, std::string> GsIntrinsicNamesToFunctions;
 
+	bool& IncludeLibraryHeader;
+
 public:
-	ReplaceIntrinsicsVisitor( ASTContext* Context, Rewriter& R );
+	ReplaceIntrinsicsVisitor( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader );
 
 	//
 	// Replaces calls to intrisics with their wrappers.
@@ -45,7 +47,7 @@ private:
 //
 class ReplaceIntrinsicsConsumer : public ASTConsumer {
 public:
-	ReplaceIntrinsicsConsumer( ASTContext* Context, Rewriter& R );
+	ReplaceIntrinsicsConsumer( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader );
 
 	void HandleTranslationUnit( ASTContext& Context ) override;
 

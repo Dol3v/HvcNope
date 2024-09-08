@@ -13,7 +13,7 @@
 class KernelFunctionFinder : public RecursiveASTVisitor<KernelFunctionFinder> {
 public:
 
-	KernelFunctionFinder( ASTContext* Context, std::set<std::string>& KernelFunctions );
+	KernelFunctionFinder( ASTContext* Context, std::set<std::string>& KernelFunctions, bool& IncludeLibraryHeader );
 
 	//
 	// Mark all declared functions with a kernel attribute.
@@ -33,6 +33,7 @@ private:
 private:
 	ASTContext* Context;
 	std::set<std::string>& KernelFunctions;
+	bool& IncludeLibraryHeader;
 };
 
 //
@@ -40,7 +41,7 @@ private:
 //
 class KernelFunctionConsumer : public ASTConsumer {
 public:
-	explicit KernelFunctionConsumer( ASTContext* Context, Rewriter& R );
+	KernelFunctionConsumer( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader );
 
 	void HandleTranslationUnit( ASTContext& Context ) override;
 

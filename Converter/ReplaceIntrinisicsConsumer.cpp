@@ -2,18 +2,16 @@
 #include "ReplaceIntrinisicsConsumer.h"
 #include "Utils.h"
 
-ReplaceIntrinsicsConsumer::ReplaceIntrinsicsConsumer( ASTContext* Context, Rewriter& R )
- : Visitor(Context, R) {}
+ReplaceIntrinsicsConsumer::ReplaceIntrinsicsConsumer( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader )
+ : Visitor( Context, R, IncludeLibraryHeader ) {}
 
 void ReplaceIntrinsicsConsumer::HandleTranslationUnit( ASTContext& Context )
 {
 	Visitor.TraverseTranslationUnitDecl( Context.getTranslationUnitDecl() );
 }
 
-ReplaceIntrinsicsVisitor::ReplaceIntrinsicsVisitor( ASTContext* Context, Rewriter& R )
-	: Context(Context), R(R)
-{
-}
+ReplaceIntrinsicsVisitor::ReplaceIntrinsicsVisitor( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader )
+	: Context(Context), R(R), IncludeLibraryHeader( IncludeLibraryHeader ) {}
 
 const std::map<std::string, std::string> ReplaceIntrinsicsVisitor::IntrinsicNamesToFunctions = 
 {
@@ -95,6 +93,9 @@ bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 			newCall += ")";
 
 			R.ReplaceText( Call->getSourceRange(), newCall );
+		
+			// Calling into library implementation, should include header
+			IncludeLibraryHeader = true;
 		}
 	}
 	return true;
