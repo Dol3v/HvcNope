@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "KernelFunctionConsumer.h"
 #include "Utils.h"
+#include "ToolConfiguration.h"
 
 KernelFunctionConsumer::KernelFunctionConsumer( ASTContext* Context, Rewriter& Rewriter, bool& IncludeLibraryHeader ) :
 	Finder(Context, KernelFunctions, IncludeLibraryHeader),
@@ -53,7 +54,7 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 		SourceLocation loc = FD->getLocation();
 		if (loc.isValid()) {
 			auto declarationFilePath = SM.getFilename( loc ).str();
-			if (IsFileInWdkKm( declarationFilePath )) {
+			if (ToolConfiguration::Instance().IsKernelSource( declarationFilePath )) {
 				// kernel function, add
 				KernelFunctions.insert( FD->getNameAsString() );
 				outs() << "Function " << FD->getNameAsString() << " is kernel, defined in headers\n";
@@ -68,16 +69,6 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 		}
 	}
 	return true;
-}
-
-bool KernelFunctionFinder::IsFileInWdkKm( const std::string_view FilePath )
-{
-	namespace fs = std::filesystem;
-
-	// test
-	fs::path wdk = R"(C:\Users\dol12\source\repos\Dol3v\HvcNope\Converter\a)";
-
-	return Utils::IsChildFolder(wdk, FilePath);
 }
 
 KernelCallRewriter::KernelCallRewriter( ASTContext* Context, Rewriter& R, const std::set<std::string>& Functions )
@@ -98,7 +89,7 @@ bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
 			// Generate new call expression
 			std::string newCall = "g_Invoker.Call(\"" + functionName + "\"";
 
-			newCall += Utils::DumpCallArguments( 
+			newCall += Utils::Clang::DumpCallArguments( 
 				Call,
 				Context->getPrintingPolicy(),
 				/*AddDelimeterAtStart=*/true

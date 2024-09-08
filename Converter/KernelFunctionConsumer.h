@@ -21,14 +21,12 @@ public:
 	virtual bool VisitFunctionDecl( FunctionDecl* FD );
 
 	//
-	// Mark all called functions that come from the Windows WDK km folder as 
+	// Mark all called functions that come from a kernel-marked source file as
 	// kernel functions.
+	// 
+	// See the kernel directories option of our tool.
 	//
 	virtual bool VisitCallExpr( CallExpr* Call );
-
-private:
-
-	bool IsFileInWdkKm( const std::string_view Filename );
 
 private:
 	ASTContext* Context;

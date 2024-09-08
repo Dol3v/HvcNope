@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ReplaceIntrinisicsConsumer.h"
 #include "Utils.h"
+#include "ToolConfiguration.h"
 
 ReplaceIntrinsicsConsumer::ReplaceIntrinsicsConsumer( ASTContext* Context, Rewriter& R, bool& IncludeLibraryHeader )
  : Visitor( Context, R, IncludeLibraryHeader ) {}
@@ -69,12 +70,22 @@ std::optional<std::string> ReplaceIntrinsicsVisitor::GetIntrinsicWrapperNameIfNe
 
 		if (GsIntrinsicNamesToFunctions.find( calleeName ) != GsIntrinsicNamesToFunctions.end()) 
 		{
+			std::string kernelGsWrapper = GsIntrinsicNamesToFunctions.at( calleeName );
+
 			// check if CallExpr is inside known GS source range
 			for ( SourceRange gsRange : KernelGsSourceRanges )
 			{
 				if (gsRange.fullyContains( Call->getSourceRange() )) {
-					return GsIntrinsicNamesToFunctions.at( calleeName );
+					return kernelGsWrapper;
 				}
+			}
+
+			// if CallExpr is in kernel source, assume we're dealing with kernel GS
+			SourceManager& SM = Context->getSourceManager();
+			std::string fileName = SM.getFilename( Call->getBeginLoc() ).str();
+
+			if (ToolConfiguration::Instance().IsKernelSource( fileName )) {
+				return kernelGsWrapper;
 			}
 		}
 
@@ -89,7 +100,7 @@ bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 		if (wrapperName) {
 			// replace call
 			std::string newCall = wrapperName.value() + "(";
-			newCall += Utils::DumpCallArguments( Call, Context->getPrintingPolicy() );
+			newCall += Utils::Clang::DumpCallArguments( Call, Context->getPrintingPolicy() );
 			newCall += ")";
 
 			R.ReplaceText( Call->getSourceRange(), newCall );

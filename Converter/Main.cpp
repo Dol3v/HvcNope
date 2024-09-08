@@ -4,43 +4,20 @@
 #include <iostream>
 #include "KernelFunctionConsumer.h"
 #include "ReplaceIntrinisicsConsumer.h"
+#include "ToolConfiguration.h"
 
+static llvm::cl::list<std::string> KernelDirectories(
+	"K",
+	llvm::cl::desc( "Libraries that are assumed to contain kernel headers/definitions" ),
+	llvm::cl::value_desc( "directory" )
+);
 
-llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
-
-
-DeclarationMatcher PointerWithAnnotationAttributeMatcher =
-varDecl(
-	hasType( pointerType() ),
-	hasAttr( clang::attr::Annotate )
-).bind( "ptrWithKernel" );
-
-//StatementMatcher PossibleKernelPointerUsageMatcher = 
-//    declRefExpr(to())
-
-class PointerWithKernelAttrPrinter : public MatchFinder::MatchCallback {
-public:
-	virtual void run( const MatchFinder::MatchResult& Result ) {
-		if (const VarDecl* VD = Result.Nodes.getNodeAs<VarDecl>( "ptrWithKernel" )) {
-			if (const AnnotateAttr* AA = VD->getAttr<AnnotateAttr>()) {
-				VD->dump();  // Dumps AST information for the matched node.
-
-				llvm::outs() << "Found a pointer declaration with 'kernel' attribute: "
-					<< VD->getNameAsString() << "\n";
-
-			}
-		}
-	}
-};
-
+static llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
 
 class MainConsumer : public ASTConsumer {
 private:
 	std::unique_ptr<KernelFunctionConsumer> kernelFunctionConsumer;
 	std::unique_ptr<ReplaceIntrinsicsConsumer> intrinsicsConsumer;
-
-	MatchFinder Matcher;
-	PointerWithKernelAttrPrinter printer;
 
 	Rewriter& rewriter;
 	bool includeHeader;
@@ -48,8 +25,6 @@ private:
 public:
 	explicit MainConsumer( CompilerInstance* CI, Rewriter& R ) : rewriter( R ), includeHeader( false )
 	{
-		Matcher.addMatcher( PointerWithAnnotationAttributeMatcher, &printer );
-
 		ASTContext* context = &CI->getASTContext();
 		rewriter.setSourceMgr( context->getSourceManager(), context->getLangOpts() );
 
@@ -58,9 +33,8 @@ public:
 		intrinsicsConsumer = make_unique<ReplaceIntrinsicsConsumer>( context, rewriter, includeHeader );
 	}
 
-	virtual void HandleTranslationUnit( ASTContext& Context ) {
-		Matcher.matchAST( Context );
-
+	virtual void HandleTranslationUnit( ASTContext& Context ) 
+	{
 		// call all consumers
 		kernelFunctionConsumer->HandleTranslationUnit( Context );
 		intrinsicsConsumer->HandleTranslationUnit( Context );
@@ -80,6 +54,7 @@ public:
 
 class HvcnopeFrontendAction : public ASTFrontendAction {
 public:
+
 	void EndSourceFileAction() override {
 		outs() << "END OF FILE ACTION:\n";
 		rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outs() );
@@ -104,6 +79,11 @@ int main( int argc, const char** argv )
 		return 1;
 	}
 	ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
+
+	// parse config from command options
+	std::vector<std::string> kernelDirs( KernelDirectories.begin(), KernelDirectories.end() );
+	ToolConfiguration::Initialize( kernelDirs );
+	
 	int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
 	return result;
 }

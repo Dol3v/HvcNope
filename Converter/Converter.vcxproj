@@ -143,12 +143,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="ToolConfiguration.cpp" />
     <ClCompile Include="KernelFunctionConsumer.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ReplaceIntrinisicsConsumer.cpp" />
     <ClCompile Include="Utils.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ToolConfiguration.h" />
     <ClInclude Include="KernelFunctionConsumer.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ReplaceIntrinisicsConsumer.h" />

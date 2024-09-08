@@ -2,7 +2,7 @@
 #include "Utils.h"
 #include <iostream>
 
-std::string Utils::DumpCallArguments( 
+std::string Utils::Clang::DumpCallArguments( 
 	CallExpr* Call,
 	const PrintingPolicy& PrintingPolicy,
 	bool AddDelimeterAtStart, 
@@ -29,42 +29,7 @@ std::string Utils::DumpCallArguments(
     return result;
 }
 
-std::optional<const FunctionDecl*> Utils::GetContainingFunctionDecl( const CallExpr* Call, ASTContext* Context )
-{
-	outs() << "Finding out containing function\n";
-	Call->dump();
-
-    const auto parents = Context->getParents( *Call );
-    if (parents.empty()) {
-        return std::nullopt;
-    }
-
-    const DynTypedNode& parentNode = parents[0];
-
-    // Traverse upwards through the parent nodes
-    const Decl* currentDecl = nullptr;
-    while (true) {
-        if (auto* parentDecl = parentNode.get<Decl>()) {
-            currentDecl = parentDecl;
-
-            // Check if we hit a FunctionDecl
-            if (auto* funcDecl = dyn_cast<FunctionDecl>(currentDecl)) {
-                return funcDecl;
-            }
-        }
-
-        // Get the next parent
-        const auto nextParents = Context->getParents( *currentDecl );
-        if (nextParents.empty()) {
-            break;
-        }
-        currentDecl = nextParents[0].get<Decl>();
-    }
-
-    return std::nullopt;
-}
-
-bool Utils::IsChildFolder( const fs::path& Parent, const fs::path& Child ) {
+bool Utils::Fs::IsChildFolder( const fs::path& Parent, const fs::path& Child ) {
 
 	// Check if both paths are directories and parent is indeed a parent of child
 	if (fs::is_directory( Parent )) {
