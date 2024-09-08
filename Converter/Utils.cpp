@@ -31,12 +31,10 @@ std::string Utils::DumpCallArguments(
 
 bool Utils::IsChildFolder( const fs::path& Parent, const fs::path& Child ) {
 
-	std::cout << "Parent: " << Parent << " Child: " << Child << "\n";
 	// Check if both paths are directories and parent is indeed a parent of child
 	if (fs::is_directory( Parent )) {
 		auto parentCanonical = fs::canonical( Parent );
 		auto childCanonical = fs::canonical( Child );
-		std::cout << "Parent canonical: " << parentCanonical << " Child canonical: " << childCanonical << "\n";
 
 		return std::mismatch( parentCanonical.begin(), parentCanonical.end(), childCanonical.begin() ).first == parentCanonical.end();
 	}

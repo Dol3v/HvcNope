@@ -6,6 +6,7 @@
 
 #include <intrin.h> // Include this header for intrinsics
 #include "a/hello.h"
+#include "Hvcnope.h"
 
 #define MY_ATTRIBUTE __attribute__((annotate("kernel")))
 

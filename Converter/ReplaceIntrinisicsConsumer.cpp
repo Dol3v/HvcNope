@@ -35,9 +35,47 @@ const std::map<std::string, std::string> ReplaceIntrinsicsVisitor::IntrinsicName
 	{"__outwordstring", "Hvcnope_outwordstring"},
 	{"__outdword", "Hvcnope_outdword"},
 	{"__outdwordstring", "Hvcnope_outdwordstring"},
-
-	// TODO: replace any __readgs*/__writegs* from WDK-KM with corresponding stub 
 };
+
+const std::map<std::string, std::string> ReplaceIntrinsicsVisitor::GsIntrinsicNamesToFunctions =
+{
+	{"__readgsbyte", "Hvcnope__readgsbyte"},
+	{"__readgsword", "Hvcnope__readgsword"},
+	{"__readgsdword", "Hvcnope__readgsdword"},
+	{"__readgsqword", "Hvcnope__readgsqword"},
+
+	{"__writegsbyte", "Hvcnope__writegsbyte"},
+	{"__writegsword", "Hvcnope__writegsword"},
+	{"__writegsdword", "Hvcnope__writegsdword"},
+	{"__writegsqword", "Hvcnope__writegsqword"},
+
+	{"__incgsbyte", "Hvcnope__incgsbyte"},
+	{"__incgsword", "Hvcnope__incgsword"},
+	{"__incgsdword", "Hvcnope__incgsdword"},
+	{"__incgsqword", "Hvcnope__incgsqword"},
+
+	{"__addgsbyte", "Hvcnope__addgsbyte"},
+	{"__addgsword", "Hvcnope__addgsword"},
+	{"__addgsdword", "Hvcnope__addgsdword"},
+	{"__addgsqword", "Hvcnope__addgsqword"}
+};
+
+std::optional<std::string> ReplaceIntrinsicsVisitor::GetIntrinsicWrapperNameIfNecessary( CallExpr* Call )
+{
+	if (const FunctionDecl* FD = Call->getDirectCallee()) {
+		std::string calleeName = FD->getNameAsString();
+		if (IntrinsicNamesToFunctions.find( calleeName ) != IntrinsicNamesToFunctions.end()) {
+			// callee is an intrinsic we always replace
+			return IntrinsicNamesToFunctions.at( calleeName );
+		}
+
+		if (GsIntrinsicNamesToFunctions.find( calleeName ) != GsIntrinsicNamesToFunctions.end()) 
+		{
+			// get call declaration
+			//if (auto declContext = Call..get)
+		}
+	}
+}
 
 bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 {	
@@ -51,6 +89,16 @@ bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 			newCall += ")";
 
 			R.ReplaceText( Call->getSourceRange(), newCall );
+		}
+	}
+	return true;
+}
+
+bool ReplaceIntrinsicsVisitor::VisitFunctionDecl( FunctionDecl* FD )
+{
+	if (AnnotateAttr* attr = FD->getAttr<AnnotateAttr>()) {
+		if (attr->getAnnotation() == "kernel_gs") {
+			KernelGsFunctionNames.insert( FD->getNameAsString() );
 		}
 	}
 	return true;
