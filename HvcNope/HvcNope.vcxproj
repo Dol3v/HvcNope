@@ -145,6 +145,7 @@
     <ClInclude Include="CallFunction.h" />
     <ClInclude Include="Hvcnope.h" />
     <ClInclude Include="Intrinsics.h" />
+    <ClInclude Include="KernelPtr.h" />
     <ClInclude Include="MockDriver.h" />
     <ClInclude Include="Nt.h" />
     <ClInclude Include="Offsets.h" />
