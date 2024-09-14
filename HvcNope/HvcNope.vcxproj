@@ -150,6 +150,7 @@
     <ClInclude Include="Nt.h" />
     <ClInclude Include="Offsets.h" />
     <ClInclude Include="PointerGenerator.h" />
+    <ClInclude Include="PoolFlags.h" />
     <ClInclude Include="Resolves.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="KernelReadWrite.h" />

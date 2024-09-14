@@ -98,5 +98,8 @@
     <ClInclude Include="KernelPtr.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PoolFlags.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

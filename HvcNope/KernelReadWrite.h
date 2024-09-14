@@ -14,6 +14,7 @@ public:
 	virtual void WriteQword(kAddress Address, Qword Value) = 0;
 
 #define AlignUpToQword(Size) ((Size & ~(sizeof(Qword))) + sizeof(Qword))
+#define AlignDownToQword(Size) ((Size & ~(sizeof(Qword))))
 
 	virtual std::vector<Byte> ReadBuffer(kAddress Address, ULONG Length) {
 		auto alignedLength = AlignUpToQword(Length);
@@ -40,12 +41,19 @@ public:
 		return result;
 	}
 
-	virtual void WriteBuffer( kAddress DestinationAddress, std::span<Qword> Buffer )
+	virtual void WriteBuffer( kAddress DestinationAddress, std::span<Byte> Buffer )
 	{
 		auto current = DestinationAddress;
-		for (Qword qword : Buffer) {
-			WriteQword( current, qword );
+
+		size_t i = 0;
+		for (; i < AlignDownToQword( Buffer.size() ); i += sizeof( Qword )) {
+			WriteQword( current, *(Qword*)&Buffer[i] );
 			current += sizeof( Qword );
+		}
+
+		for (; i < Buffer.size(); ++i) {
+			WriteByte( current, Buffer[i]);
+			current += sizeof( Byte );
 		}
 	}
 

