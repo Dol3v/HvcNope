@@ -132,12 +132,22 @@ bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
 
 	// handle calls to kernel function pointers
 	if (const VarDecl* VD = dyn_cast<VarDecl>(Call->getCalleeDecl())) {
-		// if it's a function pointer that has the kernel attribute
+		// if it's a function pointer
 		if (VD->getType()->isPointerType() &&
-			VD->getType()->getPointeeType()->isFunctionType() &&
-			Utils::Clang::HasAnnotateAttrWithName( VD, "kernel" ))
+			VD->getType()->getPointeeType()->isFunctionType())
 		{
-			rewriteCall = true;
+			// if the variable is declared with the kernel attribute
+			if (Utils::Clang::HasAnnotateAttrWithName( VD, "kernel" )) {
+				rewriteCall = true;
+			}
+			// if the variable's type is declared with the kernel attribute
+			else if (const TypedefType* typedefType = VD->getType()->getAs<TypedefType>()) {
+				if (const TypedefNameDecl* TD = typedefType->getDecl()) {
+					if (Utils::Clang::HasAnnotateAttrWithName( TD, "kernel" )) {
+						rewriteCall = true;
+					}
+				}
+			}
 
 			//
 			// We call the kernel function pointer, assuming it points to a kernel address.
