@@ -23,6 +23,8 @@ unsigned char KERNEL_GS func3() {
     return __readgsbyte( 0 );
 }
 
+typedef void (*SomePtr_t)(int);
+
 int main( void ) {
     int result = -1, val = 4;
     do_math( &val );
@@ -31,11 +33,15 @@ int main( void ) {
     //int* __declspec(special) a = nullptr;
     //void* MY_ATTRIBUTE b = nullptr;
 
-    //void* MY_ATTRIBUTE c = func();
+    void* c = func();
 
     unsigned long long val2 = __readmsr( 0x600 );
 
     int d = func2();
+
+    KERNEL SomePtr_t ptr = 0;
+
+    ptr( 5 );
 
     return result;
 }

@@ -29,6 +29,20 @@ std::string Utils::Clang::DumpCallArguments(
     return result;
 }
 
+bool Utils::Clang::HasAnnotateAttrWithName( const Decl* Declaration, const std::string& Name )
+{
+	if (!Declaration->hasAttrs()) return false;
+
+	for (const Attr* attr : Declaration->getAttrs()) {
+		if (const auto* annotateAttr = dyn_cast<AnnotateAttr>(attr)) {
+			if (annotateAttr->getAnnotation() == Name) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool Utils::Fs::IsChildFolder( const fs::path& Parent, const fs::path& Child ) {
 
 	// Check if both paths are directories and parent is indeed a parent of child

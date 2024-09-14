@@ -21,12 +21,13 @@ public:
 	virtual bool VisitFunctionDecl( FunctionDecl* FD );
 
 	//
-	// Mark all called functions that come from a kernel-marked source file as
+	// Mark all called functions that come from a kernel-marked source file/kernel function pointers as
 	// kernel functions.
 	// 
 	// See the kernel directories option of our tool.
 	//
 	virtual bool VisitCallExpr( CallExpr* Call );
+
 
 private:
 	ASTContext* Context;
@@ -44,9 +45,16 @@ public:
 	void HandleTranslationUnit( ASTContext& Context ) override;
 
 private:
+	
+	//std::unique_ptr<MatchFinder::MatchCallback> CreateKernelFunctionPtrHandler();
+
+	//std::unique_ptr<MatchFinder::MatchCallback> CreateKernelFunctionPtrCallHandler();
+
+private:
 	std::set<std::string> KernelFunctions;
 	KernelFunctionFinder Finder;
-	Rewriter R;
+	Rewriter& R;
+	//MatchFinder FunctionPointerMatcher;
 };
 
 class KernelCallRewriter : public RecursiveASTVisitor<KernelCallRewriter> {

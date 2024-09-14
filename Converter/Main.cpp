@@ -6,6 +6,10 @@
 #include "ReplaceIntrinisicsConsumer.h"
 #include "ToolConfiguration.h"
 
+#include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Frontend/TextDiagnosticPrinter.h"
+
 static llvm::cl::list<std::string> KernelDirectories(
 	"K",
 	llvm::cl::desc( "Libraries that are assumed to contain kernel headers/definitions" ),

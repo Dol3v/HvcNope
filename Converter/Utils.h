@@ -22,6 +22,11 @@ namespace Utils {
 			const PrintingPolicy& PrintingPolicy,
 			bool AddDelimeterAtStart = false,
 			std::string_view Delimiter = ", " );
+
+		bool HasAnnotateAttrWithName(
+			const Decl* Declaration,
+			const std::string& Name
+		);
 	}
 
 
