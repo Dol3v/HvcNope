@@ -22,6 +22,12 @@ public:
         return *this;
     }
 
+    KernelPtr& operator=( kAddress Address ) {
+        m_Pointer = Address;
+        m_ShouldFree = false;
+        return *this;
+    }
+
     T* operator->() const {
         return reinterpret_cast<T*>(m_Pointer);
     }
@@ -29,6 +35,8 @@ public:
     T& operator[]( std::size_t index ) {
         return *KernelPtr<T>( reinterpret_cast<T*>(m_Pointer + index * sizeof( T )) );
     }
+
+    kAddress get() { return m_Pointer;  }
 
     ~KernelPtr() {
         if (!m_ShouldFree) return;
