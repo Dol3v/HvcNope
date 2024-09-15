@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 project(Demo CXX)
 
+# Generate compilation database for libtooling tool
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Set the path to clang.exe
 set(CLANG_EXECUTABLE "C:\\Users\\dol12\\llvm-project\\build\\Debug\\bin\\clang.exe")
 
@@ -34,7 +37,7 @@ foreach(INCLUDE_DIR ${INCLUDE_DIRS})
 endforeach()
 
 # Define a custom target to run the libtooling tool on each source file
-add_custom_target(run_libtooling ALL
+add_custom_target(ConverterTool ALL
     COMMENT "Running libtooling tool on source files..."
 )
 
@@ -44,10 +47,9 @@ foreach(SRC ${SOURCE_FILES})
     set(REWRITTEN_FILE "${REWRITE_DIR}/${FILENAME}")
 
     add_custom_command(
-        TARGET run_libtooling
+        TARGET ConverterTool
         COMMAND ${LIBTOOLING_TOOL} --kernel-dir=${KERNEL_DIR} ${INCLUDE_FLAGS} ${SRC} > ${REWRITTEN_FILE}
         DEPENDS ${SRC}
-        OUTPUT ${REWRITTEN_FILE}
         COMMENT "Rewriting ${FILENAME}"
     )
 endforeach()
@@ -60,4 +62,6 @@ add_executable(DemoExe
 
 # Use clang for compilation
 set(CMAKE_CXX_COMPILER ${CLANG_EXECUTABLE})
-target_include_directories(MyExecutable PRIVATE ${INCLUDE_DIRS})
+target_include_directories(DemoExe PRIVATE ${INCLUDE_DIRS})
+
+add_dependencies(DemoExe ConverterTool)
