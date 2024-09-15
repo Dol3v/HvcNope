@@ -1,14 +1,17 @@
 
 // Declares clang::SyntaxOnlyAction.
 #include "pch.h"    
+
 #include <iostream>
+#include <fstream>
+
 #include "KernelFunctionConsumer.h"
 #include "ReplaceIntrinisicsConsumer.h"
 #include "ToolConfiguration.h"
 
-#include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/DiagnosticOptions.h"
-#include "clang/Frontend/TextDiagnosticPrinter.h"
+//
+// Command line options
+//
 
 static cl::OptionCategory DefaultCategory( "Converter options" );
 
@@ -21,6 +24,24 @@ static cl::list<std::string> KernelDirectories(
 
 static cl::alias KernelDirectoriesAlias(
 	"K", cl::aliasopt( KernelDirectories ), cl::cat( DefaultCategory )
+);
+
+static cl::opt<std::string> OutputPath(
+	"output-path",
+	cl::desc( "Directory path to output the rewritten source to" ),
+	cl::value_desc( "directory" ),
+	cl::cat( DefaultCategory )
+);
+
+static cl::alias OutputPathAlias(
+	"O", cl::aliasopt( OutputPath ), cl::cat( DefaultCategory )
+);
+
+static cl::opt<std::string> RootDir(
+	"root-dir",
+	cl::desc( "Root directory of all sources in the project, default is CWD" ),
+	cl::value_desc( "directory" ),
+	cl::cat( DefaultCategory )
 );
 
 
@@ -67,17 +88,47 @@ public:
 
 	void EndSourceFileAction() override {
 		outs() << "END OF FILE ACTION:\n";
-		rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outs() );
+
+		auto newSource = GetNewSourceFile();
+
+		std::error_code ec;
+		llvm::raw_fd_ostream outputStream( newSource.string(), ec );
+		if (ec) {
+			errs() << "Failed to open output stream to write to " << newSource.string() << ", ec=" << ec.message() << "\n";
+			throw std::runtime_error( "Failed to open new source" );
+		}
+
+		rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outputStream );
 	}
 
 	virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
-		return  std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
+		currentFile = fs::absolute(file.str());
+		return std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
+	}
+
+private:
+
+	fs::path GetNewSourceFile() {
+		auto& config = ToolConfiguration::Instance();
+
+		const fs::path& outputPath = config.GetOutputDirectory();
+		const fs::path& rootPath = config.GetRootDirectory();
+
+		// get relative path from root to currentFile
+		auto sourceRelative = fs::relative( currentFile, rootPath );
+
+		auto newSource = outputPath / sourceRelative;
+
+		// create missing directories if necessary
+		fs::create_directories( newSource );
+
+		return newSource;
 	}
 
 private:
 	Rewriter rewriter;
+	fs::path currentFile;
 };
-
 
 extern llvm::cl::OptionCategory DefaultCategory;
 
@@ -92,7 +143,7 @@ int main( int argc, const char** argv )
 
 	// parse config from command options
 	std::vector<std::string> kernelDirs( KernelDirectories.begin(), KernelDirectories.end() );
-	ToolConfiguration::Initialize( kernelDirs );
+	ToolConfiguration::Initialize( kernelDirs, OutputPath, RootDir );
 	
 	int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
 	return result;
