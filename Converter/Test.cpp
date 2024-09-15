@@ -23,7 +23,7 @@ unsigned char KERNEL_GS func3() {
     return __readgsbyte( 0 );
 }
 
-typedef void (*SomePtr_t)(int);
+KERNEL typedef void (*SomePtr_t)(int);
 
 int main( void ) {
     int result = -1, val = 4;
@@ -39,7 +39,7 @@ int main( void ) {
 
     int d = func2();
 
-    KERNEL SomePtr_t ptr = 0;
+    SomePtr_t ptr = 0;
 
     ptr( 5 );
 

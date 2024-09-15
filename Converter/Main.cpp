@@ -10,13 +10,19 @@
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 
-static llvm::cl::list<std::string> KernelDirectories(
-	"K",
-	llvm::cl::desc( "Libraries that are assumed to contain kernel headers/definitions" ),
-	llvm::cl::value_desc( "directory" )
+static cl::OptionCategory DefaultCategory( "Converter options" );
+
+static cl::list<std::string> KernelDirectories(
+	"kernel-dir",
+	cl::desc( "Libraries that are assumed to contain kernel headers/definitions" ),
+	cl::value_desc( "directory" ),
+	cl::cat(DefaultCategory)
 );
 
-static llvm::cl::OptionCategory MyToolCategory( "my-tool options" );
+static cl::alias KernelDirectoriesAlias(
+	"K", cl::aliasopt( KernelDirectories ), cl::cat( DefaultCategory )
+);
+
 
 class MainConsumer : public ASTConsumer {
 private:
@@ -73,11 +79,11 @@ private:
 };
 
 
-extern llvm::cl::OptionCategory MyToolCategory;
+extern llvm::cl::OptionCategory DefaultCategory;
 
 int main( int argc, const char** argv ) 
 {
-	auto op = CommonOptionsParser::create( argc, argv, MyToolCategory );
+	auto op = CommonOptionsParser::create( argc, argv, DefaultCategory );
 	if (op.takeError()) {
 		errs() << "\nUnexpected arguments\n";
 		return 1;
