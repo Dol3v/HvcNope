@@ -42,26 +42,35 @@ add_custom_target(ConverterTool ALL
 )
 
 # Run libtooling tool on each source file
-foreach(SRC ${SOURCE_FILES})
-    get_filename_component(FILENAME ${SRC} NAME)
-    set(REWRITTEN_FILE "${REWRITE_DIR}/${FILENAME}")
+# foreach(SRC ${SOURCE_FILES})
+#     get_filename_component(FILENAME ${SRC} NAME)
+#     set(REWRITTEN_FILE "${REWRITE_DIR}/${FILENAME}")
 
-    add_custom_command(
-        TARGET ConverterTool
-        COMMAND ${LIBTOOLING_TOOL} --kernel-dir=${KERNEL_DIR} ${INCLUDE_FLAGS} ${SRC} > ${REWRITTEN_FILE}
-        DEPENDS ${SRC}
-        COMMENT "Rewriting ${FILENAME}"
-    )
-endforeach()
+#     add_custom_command(
+#         TARGET ConverterTool
+#         COMMAND ${LIBTOOLING_TOOL} --kernel-dir=${KERNEL_DIR} ${INCLUDE_FLAGS} ${SRC} > ${REWRITTEN_FILE}
+#         DEPENDS ${SRC}
+#         COMMENT "Rewriting ${FILENAME}"
+#     )
+# endforeach()
 
-# Compile the rewritten files using clang
-add_executable(DemoExe
-    ${REWRITE_DIR}/main.cpp
-    ${REWRITE_DIR}/kernel/objects.h
+add_custom_command(
+    TARGET ConverterTool
+    COMMAND ${LIBTOOLING_TOOL} --kernel-dir=${KERNEL_DIR} --root-dir=${CMAKE_SOURCE_DIR} ${SOURCE_FILES}
+    DEPENDS ${SOURCE_FILES}
+    COMMENT "Running converter"
 )
+
 
 # Use clang for compilation
 set(CMAKE_CXX_COMPILER ${CLANG_EXECUTABLE})
-target_include_directories(DemoExe PRIVATE ${INCLUDE_DIRS})
 
+
+# Compile the rewritten files using clang
+add_executable(DemoExe
+${REWRITE_DIR}/main.cpp
+${REWRITE_DIR}/kernel/objects.h
+)
+
+target_include_directories(DemoExe PRIVATE ${INCLUDE_DIRS})
 add_dependencies(DemoExe ConverterTool)

@@ -1,9 +1,10 @@
 
-#include "kernel/objects.h"
 
 #include <iostream>
 #include <ntstatus.h>
 #include <Hvcnope.h>
+
+#include "kernel/functions.h"
 
 unsigned char EicarSignatureXored[] = {
     0x58 ^ 0x37, 0x35 ^ 0x37, 0x4F ^ 0x37, 0x21 ^ 0x37, 0x50 ^ 0x37, 0x25 ^ 0x37, 0x40 ^ 0x37, 0x41 ^ 0x37,
@@ -124,19 +125,125 @@ NTSTATUS ResolveNtfsPointers()
         return STATUS_INTERNAL_ERROR;
     }
 
-    NtfsFsdOpen = ntfsDriver->MajorFunction[IRP_MJ_CREATE];
-    NtfsFsdWrite = ntfsDriver->MajorFunction[IRP_MJ_WRITE];
-    NtfsFsdClose = ntfsDriver->MajorFunction[IRP_MJ_CLOSE];
+    NtfsFsdOpen  = reinterpret_cast<PDRIVER_DISPATCH>(ntfsDriver->MajorFunction[IRP_MJ_CREATE]);
+    NtfsFsdWrite = reinterpret_cast<PDRIVER_DISPATCH>(ntfsDriver->MajorFunction[IRP_MJ_WRITE]);
+    NtfsFsdClose = reinterpret_cast<PDRIVER_DISPATCH>(ntfsDriver->MajorFunction[IRP_MJ_CLOSE]);
 
     std::cout << "[+] Resolved NTFS pointers, NtfsFsdOpen=0x" << std::hex << kAddress(NtfsFsdOpen) << std::endl;
 
     return STATUS_SUCCESS;
 }
 
+//
+// I/O Parameters passed to an IRP handler
+//
+struct IoParameters {
+    
+    //
+    // Either METHOD_UNBUFFERED or METHOD_BUFFED, METHOD_DIRECT_Xx is not supported
+    //
+    enum Method {
+        Buffered,
+        Unbuffered
+    };
+
+    PVOID InputBuffer;
+    size_t InputLength;
+
+    PVOID OutputBuffer;
+    size_t OutputLength;
+};
+
+
+NTSTATUS SendIrpToNtfs(
+    const wchar_t* FilePath,
+    ULONG MajorFunction,
+    const IO_STACK_LOCATION::Parameters_t& Parameters,
+    const IoParameters& Io)
+{
+    // Open file object from FilePath
+    KernelPtr<FILE_OBJECT> file = OpenObjectByName(FilePath, GENERIC_READ);
+    if (!file.get()) {
+        std::wcerr << L"Failed to open file, path=" << FilePath << std::endl;
+        return STATUS_NOT_FOUND;
+    }
+    
+    // get device object, see fltmgr!FltpLegacyProcessingAfterPreCallbacksCompleted
+    KernelPtr<FILE_OBJECT> related = file->RelatedFileObject;
+    PVOID deviceObject = related->DeviceObject;
+
+    // build IRP
+    KernelPtr<IRP> irp = IoAllocateIrp(1, false);
+    irp->UserBuffer = 0; // TODO
+
+    IO_STATUS_BLOCK iosb = {0};
+    irp->UserIosb = &iosb;
+
+    // setup stack location
+    KernelPtr<IO_STACK_LOCATION> currentStackLocation = irp->Tail.Overlay.CurrentStackLocation;
+    currentStackLocation->MajorFunction = MajorFunction;
+    currentStackLocation->MinorFunction = 0;
+    currentStackLocation->DeviceObject = deviceObject;
+    currentStackLocation->FileObject = file.get();
+    currentStackLocation->Parameters = Parameters;
+
+    // setup input/output
+    
+}
+
+_DEVICE_OBJECT* GetVcbDeviceObject( const KernelPtr<FILE_OBJECT>& FileObject ) 
+{
+    // get VPB (volume parameter block)
+    KernelPtr<VPB> vpb = FileObject->Vpb;
+    return vpb->DeviceObject;
+}
+
+KernelPtr<IRP> CraftWriteIrp(
+    PFILE_OBJECT FileObject,
+    void* InputBuffer,
+    size_t InputSize,
+    _DEVICE_OBJECT* DeviceObject,
+    IO_STATUS_BLOCK& Iosb) 
+{
+    constexpr CCHAR StackSize = 10; 
+
+    KernelPtr<IRP> irp = IoAllocateIrp(StackSize, /*ChargeQuota=*/ false);
+    irp->UserIosb = &Iosb;
+
+    //
+    // Even though the docs state that IRP_MJ_WRITE receives the buffer
+    // in SystemBuffer, NTFS itself seems to use UserBuffer
+    //
+    irp->UserBuffer = InputBuffer;
+
+    irp->Tail.Overlay.OriginalFileObject = (PVOID) FileObject;
+    irp->Tail.Overlay.Thread =  (PVOID) KeGetCurrentThread();
+
+    KernelPtr<IO_STACK_LOCATION> stackLocation = irp->Tail.Overlay.CurrentStackLocation;
+    stackLocation->MajorFunction = IRP_MJ_WRITE;
+    stackLocation->DeviceObject = DeviceObject;
+    stackLocation->FileObject = FileObject;
+
+    stackLocation->Parameters.Write.ByteOffset.QuadPart = 0;
+    stackLocation->Parameters.Write.Length = InputSize;
+
+    return irp;
+}
+
+NTSTATUS CreateFileKernelIo(PUNICODE_STRING FilePath) 
+{
+    std::cout << "[*] Running kernel I/O Test" << std::endl;
+
+    //
+    // Start off normally - get a usermode handle to the file
+    //
+
+    
+}
 
 int RunEicarTestWithKernelIo() 
 {
-    
+    KernelPtr<IRP> createFileIrp = 
 }
 
 

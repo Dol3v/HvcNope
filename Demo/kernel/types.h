@@ -1,3 +1,4 @@
+#pragma once
 
 #include <windows.h>
 #include <winternl.h>
@@ -10,17 +11,198 @@ enum KPROCESSOR_MODE {
     UserMode
 };
 
-NTSTATUS ObOpenObjectByName(
-    POBJECT_ATTRIBUTES ObjectAttributes,
-    void* ObjectType,
-    KPROCESSOR_MODE AccessMode,
-    void* AccessState,
-    ACCESS_MASK DesiredAccess,
-    PVOID ParseContext,
-    PHANDLE Handle
-);
+struct _DEVICE_OBJECT;
 
-void ObDereferenceObject(PVOID Object);
+
+#define TIMER_TOLERABLE_DELAY_BITS      6
+#define TIMER_EXPIRED_INDEX_BITS        6
+#define TIMER_PROCESSOR_INDEX_BITS      5
+
+
+typedef struct _DISPATCHER_HEADER {
+    union {
+        union {
+            volatile LONG Lock;
+            LONG LockNV;
+        } DUMMYUNIONNAME;
+
+        struct {                            // Events, Semaphores, Gates, etc.
+            UCHAR Type;                     // All (accessible via KOBJECT_TYPE)
+            UCHAR Signalling;
+            UCHAR Size;
+            UCHAR Reserved1;
+        } DUMMYSTRUCTNAME;
+
+        struct {                            // Timer
+            UCHAR TimerType;
+            union {
+                UCHAR TimerControlFlags;
+                struct {
+                    UCHAR Absolute : 1;
+                    UCHAR Wake : 1;
+                    UCHAR EncodedTolerableDelay : TIMER_TOLERABLE_DELAY_BITS;
+                } DUMMYSTRUCTNAME;
+            };
+
+            UCHAR Hand;
+            union {
+                UCHAR TimerMiscFlags;
+                struct {
+
+#if !defined(KENCODED_TIMER_PROCESSOR)
+
+                    UCHAR Index : TIMER_EXPIRED_INDEX_BITS;
+
+#else
+
+                    UCHAR Index : 1;
+                    UCHAR Processor : TIMER_PROCESSOR_INDEX_BITS;
+
+#endif
+
+                    UCHAR Inserted : 1;
+                    volatile UCHAR Expired : 1;
+                } DUMMYSTRUCTNAME;
+            } DUMMYUNIONNAME;
+        } DUMMYSTRUCTNAME2;
+
+        struct {                            // Timer2
+            UCHAR Timer2Type;
+            union {
+                UCHAR Timer2Flags;
+                struct {
+                    UCHAR Timer2Inserted : 1;
+                    UCHAR Timer2Expiring : 1;
+                    UCHAR Timer2CancelPending : 1;
+                    UCHAR Timer2SetPending : 1;
+                    UCHAR Timer2Running : 1;
+                    UCHAR Timer2Disabled : 1;
+                    UCHAR Timer2ReservedFlags : 2;
+                } DUMMYSTRUCTNAME;
+            } DUMMYUNIONNAME;
+
+            UCHAR Timer2ComponentId;
+            UCHAR Timer2RelativeId;
+        } DUMMYSTRUCTNAME3;
+
+        struct {                            // Queue
+            UCHAR QueueType;
+            union {
+                UCHAR QueueControlFlags;
+                struct {
+                    UCHAR Abandoned : 1;
+                    UCHAR DisableIncrement : 1;
+                    UCHAR QueueReservedControlFlags : 6;
+                } DUMMYSTRUCTNAME;
+            } DUMMYUNIONNAME;
+
+            UCHAR QueueSize;
+            UCHAR QueueReserved;
+        } DUMMYSTRUCTNAME4;
+
+        struct {                            // Thread
+            UCHAR ThreadType;
+            UCHAR ThreadReserved;
+
+            union {
+                UCHAR ThreadControlFlags;
+                struct {
+                    UCHAR CycleProfiling : 1;
+                    UCHAR CounterProfiling : 1;
+                    UCHAR GroupScheduling : 1;
+                    UCHAR AffinitySet : 1;
+                    UCHAR Tagged : 1;
+                    UCHAR EnergyProfiling: 1;
+                    UCHAR SchedulerAssist: 1;
+
+#if !defined(_X86_)
+
+                    UCHAR ThreadReservedControlFlags : 1;
+
+#else
+
+                    UCHAR Instrumented : 1;
+
+#endif
+
+                } DUMMYSTRUCTNAME;
+            } DUMMYUNIONNAME;
+
+            union {
+                UCHAR DebugActive;
+
+#if !defined(_X86_)
+
+                struct {
+                    BOOLEAN ActiveDR7 : 1;
+                    BOOLEAN Instrumented : 1;
+                    BOOLEAN Minimal : 1;
+                    BOOLEAN Reserved4 : 2;
+                    BOOLEAN AltSyscall : 1;
+                    BOOLEAN Emulation : 1;
+                    BOOLEAN Reserved5 : 1;
+                } DUMMYSTRUCTNAME;
+
+#endif
+
+            } DUMMYUNIONNAME2;
+        } DUMMYSTRUCTNAME5;
+
+        struct {                         // Mutant
+            UCHAR MutantType;
+            UCHAR MutantSize;
+            BOOLEAN DpcActive;
+            UCHAR MutantReserved;
+        } DUMMYSTRUCTNAME6;
+    } DUMMYUNIONNAME;
+
+    LONG SignalState;                   // Object lock
+    LIST_ENTRY WaitListHead;            // Object lock
+} DISPATCHER_HEADER, *PDISPATCHER_HEADER;
+
+
+//
+// Event object
+//
+
+typedef struct _KEVENT {
+    DISPATCHER_HEADER Header;
+} KEVENT, *PKEVENT, *PRKEVENT;
+
+
+typedef struct _FILE_OBJECT {
+    CSHORT Type;
+    CSHORT Size;
+    PVOID DeviceObject;
+    PVOID Vpb;
+    PVOID FsContext;
+    PVOID FsContext2;
+    PVOID SectionObjectPointer;
+    PVOID PrivateCacheMap;
+    NTSTATUS FinalStatus;
+    struct _FILE_OBJECT *RelatedFileObject;
+    BOOLEAN LockOperation;
+    BOOLEAN DeletePending;
+    BOOLEAN ReadAccess;
+    BOOLEAN WriteAccess;
+    BOOLEAN DeleteAccess;
+    BOOLEAN SharedRead;
+    BOOLEAN SharedWrite;
+    BOOLEAN SharedDelete;
+    ULONG Flags;
+    UNICODE_STRING FileName;
+    LARGE_INTEGER CurrentByteOffset;
+    __volatile ULONG Waiters;
+    __volatile ULONG Busy;
+    PVOID LastLock;
+    KEVENT Lock;
+    KEVENT Event;
+    __volatile PVOID CompletionContext;
+    ULONG_PTR IrpListLock;
+    LIST_ENTRY IrpList;
+    __volatile PVOID FileObjectExtension;
+} FILE_OBJECT;
+typedef struct _FILE_OBJECT *PFILE_OBJECT; 
 
 
 #define POINTER_ALIGNMENT alignas(8)
@@ -37,7 +219,9 @@ typedef struct _IO_STACK_LOCATION {
     // on the above major and minor function codes.
     //
 
-    union {
+    // NOTE: local change, we created a type name for
+    // the parameters for later usage
+    union Parameters_t {
 
         //
         // System service parameters for:  NtCreateFile
@@ -95,14 +279,14 @@ typedef struct _IO_STACK_LOCATION {
     // so it can be passed to the completion routine if needed.
     //
 
-    PVOID DeviceObject;
+    _DEVICE_OBJECT* DeviceObject;
 
     //
     // The following location contains a pointer to the file object for this
     // request.
     //
 
-    PVOID FileObject;
+    FILE_OBJECT* FileObject;
 
     //
     // The following routine is invoked depending on the flags in the above
@@ -414,10 +598,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 
 typedef IRP *PIRP;
 
-
-
-PIRP IoAllocateIrp(CCHAR StackSize, BOOLEAN ChargeQuota);
-
 typedef NTSTATUS (*PDRIVER_DISPATCH)(void*, PIRP) KERNEL;
 
 #define IRP_MJ_CREATE                   0x00
@@ -512,3 +692,19 @@ typedef struct _DRIVER_OBJECT {
     PVOID MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 } DRIVER_OBJECT;
+
+struct _VPB
+{
+    SHORT Type;                                                             //0x0
+    SHORT Size;                                                             //0x2
+    USHORT Flags;                                                           //0x4
+    USHORT VolumeLabelLength;                                               //0x6
+    struct _DEVICE_OBJECT* DeviceObject;                                    //0x8
+    struct _DEVICE_OBJECT* RealDevice;                                      //0x10
+    ULONG SerialNumber;                                                     //0x18
+    ULONG ReferenceCount;                                                   //0x1c
+    WCHAR VolumeLabel[32];                                                  //0x20
+}; 
+
+typedef _VPB VPB;
+typedef _VPB* PVPB;
