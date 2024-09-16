@@ -90,6 +90,8 @@ public:
 		outs() << "END OF FILE ACTION:\n";
 
 		auto newSource = GetNewSourceFile();
+		
+		outs() << "Writing into " << newSource.string() << "\n";
 
 		std::error_code ec;
 		llvm::raw_fd_ostream outputStream( newSource.string(), ec );
@@ -120,7 +122,7 @@ private:
 		auto newSource = outputPath / sourceRelative;
 
 		// create missing directories if necessary
-		fs::create_directories( newSource );
+		fs::create_directories( newSource.parent_path() );
 
 		return newSource;
 	}

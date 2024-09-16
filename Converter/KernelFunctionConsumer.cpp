@@ -82,6 +82,8 @@ KernelFunctionFinder::KernelFunctionFinder( ASTContext* Context, std::set<std::s
 
 bool KernelFunctionFinder::VisitFunctionDecl( FunctionDecl* FD )
 {
+	VISITOR_SKIP_NON_MAIN_FILES( FD, Context );
+
 	// Check if the function decleration has our kernel annotate attribute
 	if (Utils::Clang::HasAnnotateAttrWithName( FD, "kernel" )) {
 		auto functionName = FD->getNameAsString();
@@ -93,10 +95,9 @@ bool KernelFunctionFinder::VisitFunctionDecl( FunctionDecl* FD )
 
 bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 {
-	SourceManager& SM = Context->getSourceManager();
+	VISITOR_SKIP_NON_MAIN_FILES( Call, Context );
 
-	auto currentFilename = SM.getFilename( Call->getBeginLoc() ).str();
-	outs() << "Looking at " << currentFilename << "\n";
+	SourceManager& SM = Context->getSourceManager();
 
 	// handle calls to functions from kernel sources
 	if (FunctionDecl* FD = Call->getDirectCallee()) {
@@ -113,9 +114,6 @@ bool KernelFunctionFinder::VisitCallExpr( CallExpr* Call )
 				IncludeLibraryHeader = true;
 			}
 		}
-		else {
-			errs() << "Call to function " << FD->getNameAsString() << " has invalid location\n";
-		}
 	}
 	return true;
 }
@@ -127,36 +125,41 @@ KernelCallRewriter::KernelCallRewriter( ASTContext* Context, Rewriter& R, const 
 
 bool KernelCallRewriter::VisitCallExpr( CallExpr* Call )
 {
+	VISITOR_SKIP_NON_MAIN_FILES( Call, Context );
+
 	bool rewriteCall = false;
 	std::string calleeExpr;
 
 	// handle calls to kernel function pointers
-	if (const VarDecl* VD = dyn_cast<VarDecl>(Call->getCalleeDecl())) {
-		// if it's a function pointer
-		if (VD->getType()->isPointerType() &&
-			VD->getType()->getPointeeType()->isFunctionType())
-		{
-			// if the variable is declared with the kernel attribute
-			if (Utils::Clang::HasAnnotateAttrWithName( VD, "kernel" )) {
-				rewriteCall = true;
-			}
-			// if the variable's type is declared with the kernel attribute
-			else if (const TypedefType* typedefType = VD->getType()->getAs<TypedefType>()) {
-				if (const TypedefNameDecl* TD = typedefType->getDecl()) {
-					if (Utils::Clang::HasAnnotateAttrWithName( TD, "kernel" )) {
-						rewriteCall = true;
+	if (const Decl* decl = Call->getCalleeDecl()) {
+		if (const VarDecl* VD = dyn_cast<VarDecl>(decl)) {
+			// if it's a function pointer
+			if (VD->getType()->isPointerType() &&
+				VD->getType()->getPointeeType()->isFunctionType())
+			{
+				// if the variable is declared with the kernel attribute
+				if (Utils::Clang::HasAnnotateAttrWithName( VD, "kernel" )) {
+					rewriteCall = true;
+				}
+				// if the variable's type is declared with the kernel attribute
+				else if (const TypedefType* typedefType = VD->getType()->getAs<TypedefType>()) {
+					if (const TypedefNameDecl* TD = typedefType->getDecl()) {
+						if (Utils::Clang::HasAnnotateAttrWithName( TD, "kernel" )) {
+							rewriteCall = true;
+						}
 					}
 				}
-			}
 
-			//
-			// We call the kernel function pointer, assuming it points to a kernel address.
-			// Hence we'll add a C-style cast to kAddress.
-			//
-			calleeExpr = "kAddress(" + VD->getNameAsString() + ")";
+				//
+				// We call the kernel function pointer, assuming it points to a kernel address.
+				// Hence we'll add a C-style cast to kAddress.
+				//
+				calleeExpr = "kAddress(" + VD->getNameAsString() + ")";
+			}
 		}
 	}
-	else if (FunctionDecl* FD = Call->getDirectCallee()) {
+	// handle calls to kernel functions
+	if (FunctionDecl* FD = Call->getDirectCallee()) {
 		std::string functionName = FD->getNameInfo().getName().getAsString();
 
 		// Check if the function is in our target list

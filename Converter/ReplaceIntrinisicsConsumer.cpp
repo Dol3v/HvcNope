@@ -71,30 +71,39 @@ std::optional<std::string> ReplaceIntrinsicsVisitor::GetIntrinsicWrapperNameIfNe
 		if (GsIntrinsicNamesToFunctions.find( calleeName ) != GsIntrinsicNamesToFunctions.end()) 
 		{
 			std::string kernelGsWrapper = GsIntrinsicNamesToFunctions.at( calleeName );
+			
+			SourceManager& SM = Context->getSourceManager();
+
+			outs() << "Callee name: " << calleeName << "\n";
+			Call->getSourceRange().dump( SM );
 
 			// check if CallExpr is inside known GS source range
 			for ( SourceRange gsRange : KernelGsSourceRanges )
 			{
-				if (gsRange.fullyContains( Call->getSourceRange() )) {
+				outs() << "GS known range:\n";
+				gsRange.dump(SM);
+
+				if (gsRange.fullyContains( Call->getSourceRange() ) ) {
+					outs() << "Returning range\n";
 					return kernelGsWrapper;
 				}
 			}
 
 			// if CallExpr is in kernel source, assume we're dealing with kernel GS
-			SourceManager& SM = Context->getSourceManager();
 			std::string fileName = SM.getFilename( Call->getBeginLoc() ).str();
 
 			if (ToolConfiguration::Instance().IsKernelSource( fileName )) {
 				return kernelGsWrapper;
 			}
 		}
-
-		return std::nullopt;
 	}
+	return std::nullopt;
 }
 
 bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 {	
+	VISITOR_SKIP_NON_MAIN_FILES( Call, Context );
+
 	if (const FunctionDecl* FD = Call->getDirectCallee()) {
 		auto wrapperName = GetIntrinsicWrapperNameIfNecessary( Call );
 		if (wrapperName) {
@@ -114,13 +123,18 @@ bool ReplaceIntrinsicsVisitor::VisitCallExpr( CallExpr* Call )
 
 bool ReplaceIntrinsicsVisitor::VisitFunctionDecl( FunctionDecl* FD )
 {
-	if (AnnotateAttr* attr = FD->getAttr<AnnotateAttr>()) {
-		if (attr->getAnnotation() == "kernel_gs") {
-			//KernelGsFunctionNames.insert( FD->getNameAsString() );
-			FD->getSourceRange().dump(Context->getSourceManager());
+	VISITOR_SKIP_NON_MAIN_FILES( FD, Context );
 
-			// TODO: handle headers, use sorted vec
-			KernelGsSourceRanges.push_back( FD->getSourceRange() );
+	SourceManager& SM = Context->getSourceManager();
+	if (!SM.isInMainFile( FD->getBeginLoc() )) return true;
+
+	if (Utils::Clang::HasAnnotateAttrWithName( FD, "kernel_gs" )) {
+
+		KernelGsSourceRanges.push_back( FD->getSourceRange() );
+	}
+	else {
+		auto currentFileName = SM.getFilename( FD->getBeginLoc() );
+		if (currentFileName.find( "main.cpp" ) != StringRef::npos) {
 		}
 	}
 
