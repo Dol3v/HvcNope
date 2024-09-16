@@ -296,7 +296,6 @@ int main()
         eicar[i] = EicarSignatureXored[i] ^ 0x37;
     }
 
-
     bool succeeded = RunTestUsermodeIo(eicar);
     if (!succeeded) {
         std::cerr << "[-] Failed usermode test" << std::endl;

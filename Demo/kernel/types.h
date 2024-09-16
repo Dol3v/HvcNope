@@ -1,13 +1,47 @@
 #pragma once
 
-// #include <windows.h>
+#include <windows.h>
 
-#define _AMD64_
-#include <ntdef.h>
+// #define _AMD64_
+// #include <ntdef.h>
 
 #include "attrs.h"
 
 typedef unsigned long ACCESS_MASK;
+
+typedef struct _UNICODE_STRING {
+    USHORT Length;
+    USHORT MaximumLength;
+#ifdef MIDL_PASS
+    [size_is(MaximumLength / 2), length_is((Length) / 2) ] USHORT * Buffer;
+#else // MIDL_PASS
+    PWCH   Buffer;
+#endif // MIDL_PASS
+} UNICODE_STRING;
+typedef UNICODE_STRING *PUNICODE_STRING;
+typedef const UNICODE_STRING *PCUNICODE_STRING;
+
+typedef struct _OBJECT_ATTRIBUTES {
+    ULONG Length;
+    HANDLE RootDirectory;
+    PUNICODE_STRING ObjectName;
+    ULONG Attributes;
+    PVOID SecurityDescriptor;        // Points to type SECURITY_DESCRIPTOR
+    PVOID SecurityQualityOfService;  // Points to type SECURITY_QUALITY_OF_SERVICE
+} OBJECT_ATTRIBUTES;
+typedef OBJECT_ATTRIBUTES *POBJECT_ATTRIBUTES;
+typedef CONST OBJECT_ATTRIBUTES *PCOBJECT_ATTRIBUTES;
+
+typedef UCHAR KIRQL;
+
+typedef char CCHAR;          // winnt
+typedef short CSHORT;
+typedef ULONG CLONG;
+
+typedef CCHAR *PCCHAR;
+typedef CSHORT *PCSHORT;
+typedef CLONG *PCLONG;
+
 
 struct IO_STATUS_BLOCK {
     union {
