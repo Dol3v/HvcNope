@@ -8,6 +8,7 @@
 #include "KernelFunctionConsumer.h"
 #include "ReplaceIntrinisicsConsumer.h"
 #include "ToolConfiguration.h"
+#include "OutputAction.h"
 
 //
 // Command line options
@@ -86,45 +87,11 @@ public:
 class HvcnopeFrontendAction : public ASTFrontendAction {
 public:
 
-	void EndSourceFileAction() override {
-		outs() << "END OF FILE ACTION:\n";
-
-		auto newSource = GetNewSourceFile();
-		
-		outs() << "Writing into " << newSource.string() << "\n";
-
-		std::error_code ec;
-		llvm::raw_fd_ostream outputStream( newSource.string(), ec );
-		if (ec) {
-			errs() << "Failed to open output stream to write to " << newSource.string() << ", ec=" << ec.message() << "\n";
-			throw std::runtime_error( "Failed to open new source" );
-		}
-
-		rewriter.getEditBuffer( rewriter.getSourceMgr().getMainFileID() ).write( outputStream );
-	}
+	HvcnopeFrontendAction() : rewriter( ToolConfiguration::Instance().GetRewriter() ) {}
 
 	virtual std::unique_ptr<ASTConsumer> CreateASTConsumer( CompilerInstance& CI, StringRef file ) {
 		currentFile = fs::absolute(file.str());
 		return std::unique_ptr<ASTConsumer>( new MainConsumer( &CI, rewriter ) );
-	}
-
-private:
-
-	fs::path GetNewSourceFile() {
-		auto& config = ToolConfiguration::Instance();
-
-		const fs::path& outputPath = config.GetOutputDirectory();
-		const fs::path& rootPath = config.GetRootDirectory();
-
-		// get relative path from root to currentFile
-		auto sourceRelative = fs::relative( currentFile, rootPath );
-
-		auto newSource = outputPath / sourceRelative;
-
-		// create missing directories if necessary
-		fs::create_directories( newSource.parent_path() );
-
-		return newSource;
 	}
 
 private:
@@ -143,10 +110,14 @@ int main( int argc, const char** argv )
 	}
 	ClangTool Tool( op->getCompilations(), op->getSourcePathList() );
 
+	Rewriter rewriter;
+
 	// parse config from command options
 	std::vector<std::string> kernelDirs( KernelDirectories.begin(), KernelDirectories.end() );
 	ToolConfiguration::Initialize( kernelDirs, OutputPath, RootDir );
 	
 	int result = Tool.run( newFrontendActionFactory<HvcnopeFrontendAction>().get() );
+
+	result = Tool.run( newFrontendActionFactory<OutputAction>().get() );
 	return result;
 }

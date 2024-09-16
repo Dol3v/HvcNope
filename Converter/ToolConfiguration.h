@@ -24,6 +24,8 @@ public:
 	const fs::path& GetOutputDirectory() const;
 	const fs::path& GetRootDirectory() const;
 
+	Rewriter& GetRewriter() { return TheRewriter; }
+
 	ToolConfiguration( const ToolConfiguration& ) = delete;
 	void operator=( const ToolConfiguration& ) = delete;
 
@@ -34,4 +36,6 @@ private:
 	std::vector<std::string> KernelDirectories;
 	fs::path OutputPath;
 	fs::path RootDirectory;
+
+	Rewriter TheRewriter;
 };
