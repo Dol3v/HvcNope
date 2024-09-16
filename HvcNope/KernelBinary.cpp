@@ -86,6 +86,7 @@ std::optional<kAddress> KernelBinary::ResolveExport(const char* ExportName) cons
 		return std::nullopt;
 	}
 
+	LOG_DEBUG( "Export %s rva 0x%llx", ExportName, size_t(localExportAddress) - size_t(m_MappedKernel) );
 	return MappedToKernel(localExportAddress);
 }
 

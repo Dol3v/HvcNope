@@ -146,6 +146,9 @@
     <ClInclude Include="Hvcnope.h" />
     <ClInclude Include="Intrinsics.h" />
     <ClInclude Include="KernelPtr.h" />
+    <ClInclude Include="kernel\attrs.h" />
+    <ClInclude Include="kernel\functions.h" />
+    <ClInclude Include="kernel\types.h" />
     <ClInclude Include="MockDriver.h" />
     <ClInclude Include="Nt.h" />
     <ClInclude Include="Offsets.h" />

@@ -15,7 +15,10 @@ kAddress GetSystemProcess()
         FATAL("Failed to resolve PsInitialSystemProcess");
     }
 
+    LOG_DEBUG( "Before: %llx", PsInitialSystemProcess.value() );
     kAddress systemProcess = g_Rw->ReadQword( PsInitialSystemProcess.value() );
+    LOG_DEBUG( "After: %llx", systemProcess );
+
     return systemProcess;
 }
 

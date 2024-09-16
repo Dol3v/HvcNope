@@ -101,5 +101,14 @@
     <ClInclude Include="PoolFlags.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="kernel\types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\attrs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="kernel\functions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

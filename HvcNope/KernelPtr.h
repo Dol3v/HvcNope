@@ -9,7 +9,9 @@ public:
 
     KernelPtr( T* Pointer = nullptr, bool ShouldFree = false ) : 
         m_Pointer( reinterpret_cast<kAddress>(Pointer) ),
-        m_ShouldFree(ShouldFree) {}
+        m_ShouldFree(ShouldFree) {
+        LOG_DEBUG( "KernelPtr: Constructing from %llx", Qword( Pointer ) );
+    }
 
     //
     // Templated constructor, allow constructing a KernelPtr<T>
@@ -35,17 +37,12 @@ public:
         return *this;
     }
 
-    KernelPtr& operator=( kAddress Address ) {
-        m_Pointer = Address;
-        m_ShouldFree = false;
-        return *this;
-    }
-
     template <
         typename AddrType,
         typename std::enable_if<sizeof( AddrType ) == sizeof( kAddress ), bool>::type = true
     >
     KernelPtr& operator=( AddrType Address ) {
+        LOG_DEBUG( "KernelPtr=: Constructing from %llx", Qword( Address ) );
         m_Pointer = kAddress( Address );
         m_ShouldFree = false;
         return *this;
@@ -73,12 +70,14 @@ public:
 
 private:
     void readFromAddress( Byte* buffer, std::size_t size ) const {
+        LOG_DEBUG( "KernelPtr: Reading to %p, size 0x%llx, from 0x%llx", buffer, size, m_Pointer );
         for (std::size_t i = 0; i < size; ++i) {
             buffer[i] = g_Rw->ReadByte( m_Pointer + i );
         }
     }
 
     void writeToAddress( const Byte* buffer, std::size_t size ) {
+        LOG_DEBUG( "KernelPtr: Writing data from %p, size 0x%llx, to 0x%llx", buffer, size, m_Pointer );
         for (std::size_t i = 0; i < size; ++i) {
             g_Rw->WriteByte( m_Pointer + i, buffer[i] );
         }

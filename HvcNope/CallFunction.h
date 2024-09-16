@@ -271,7 +271,6 @@ private:
 
 		LOG_DEBUG( "Writing saved stack data from %p sized 0x%llx, to 0x%llx", previousStackData.data(), previousStackData.size(), rsp );
 		g_Rw->WriteBuffer( rsp, std::span<Byte>( previousStackData.data(), previousStackData.size() ) );
-		DebugBreak();
 
 		// Remember to set rbp!
 		g_Rw->WriteQword( pRbpValue, rsp + 0x80 + 8 );
