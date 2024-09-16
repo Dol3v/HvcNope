@@ -11,6 +11,19 @@ public:
         m_Pointer( reinterpret_cast<kAddress>(Pointer) ),
         m_ShouldFree(ShouldFree) {}
 
+    //
+    // Templated constructor, allow constructing a KernelPtr<T>
+    // if the address type is convertible to kAddress (we do a simple sanity check - 
+    // verify that the sizes are the same).
+    //
+    template <
+        typename AddrType, 
+        typename std::enable_if<sizeof(AddrType) == sizeof(kAddress), bool>::type = true
+    >
+    KernelPtr(AddrType Address, bool ShouldFree = false) :
+        m_Pointer(kAddress(Address)),
+        m_ShouldFree(ShouldFree) {}
+
     T operator*() const {
         T value;
         readFromAddress( reinterpret_cast<Byte*>(&value), sizeof( T ) );
@@ -28,6 +41,16 @@ public:
         return *this;
     }
 
+    template <
+        typename AddrType,
+        typename std::enable_if<sizeof( AddrType ) == sizeof( kAddress ), bool>::type = true
+    >
+    KernelPtr& operator=( AddrType Address ) {
+        m_Pointer = kAddress( Address );
+        m_ShouldFree = false;
+        return *this;
+    }
+
     T* operator->() const {
         return reinterpret_cast<T*>(m_Pointer);
     }
@@ -36,7 +59,7 @@ public:
         return *KernelPtr<T>( reinterpret_cast<T*>(m_Pointer + index * sizeof( T )) );
     }
 
-    kAddress get() { return m_Pointer;  }
+    T* get() { return (T*) m_Pointer;  }
 
     ~KernelPtr() {
         if (!m_ShouldFree) return;
