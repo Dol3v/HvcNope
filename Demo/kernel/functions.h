@@ -34,12 +34,7 @@ void ObDereferenceObject(PVOID Object);
 
 PIRP IoAllocateIrp(CCHAR StackSize, BOOLEAN ChargeQuota);
 
-
 //
 // Misc
 //
-
-kAddress inline KeGetCurrentThread()
-{
-    return __readgsqword(0x188);
-}
+kAddress KeGetCurrentThread();

@@ -1,5 +1,3 @@
-
-
 #include <iostream>
 #include <ntstatus.h>
 #include <vector>
@@ -284,8 +282,6 @@ bool RunTestKernelIo(std::vector<BYTE>& Signature)
     return false;
 }
 
-
-
 int main() 
 {
     // initialize HvcNope
@@ -314,4 +310,5 @@ int main()
     }
 
     std::cout << "[+] Both tests ran successfully!" << std::endl;
+    return 0;
 }

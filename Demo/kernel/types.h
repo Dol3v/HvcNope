@@ -1,10 +1,23 @@
 #pragma once
 
-#include <windows.h>
-#include <winternl.h>
+// #include <windows.h>
+
+#define _AMD64_
 #include <ntdef.h>
 
 #include "attrs.h"
+
+typedef unsigned long ACCESS_MASK;
+
+struct IO_STATUS_BLOCK {
+    union {
+        LONG Status;
+        void* Pointer;
+    };
+    ULONGLONG Information;
+};
+
+typedef IO_STATUS_BLOCK* PIO_STATUS_BLOCK;
 
 enum KPROCESSOR_MODE {
     KernelMode = 0,
@@ -230,9 +243,9 @@ typedef struct _IO_STACK_LOCATION {
         struct {
             PVOID SecurityContext;
             ULONG Options;
-            USHORT POINTER_ALIGNMENT FileAttributes;
+            USHORT FileAttributes POINTER_ALIGNMENT;
             USHORT ShareAccess;
-            ULONG POINTER_ALIGNMENT EaLength;
+            ULONG EaLength POINTER_ALIGNMENT;
         } Create;
 
         //
@@ -241,7 +254,7 @@ typedef struct _IO_STACK_LOCATION {
 
         struct {
             ULONG Length;
-            ULONG POINTER_ALIGNMENT Key;
+            ULONG Key POINTER_ALIGNMENT;
 #if defined(_WIN64)
             ULONG Flags;
 #endif
@@ -254,7 +267,7 @@ typedef struct _IO_STACK_LOCATION {
 
         struct {
             ULONG Length;
-            ULONG POINTER_ALIGNMENT Key;
+            ULONG Key POINTER_ALIGNMENT;
 #if defined(_WIN64)
             ULONG Flags;
 #endif
@@ -441,7 +454,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     union {
         struct {
             union {
-                PIO_APC_ROUTINE UserApcRoutine;
+                PVOID UserApcRoutine;
                 PVOID IssuingProcess;
             };
             union {
