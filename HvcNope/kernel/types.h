@@ -53,7 +53,7 @@ struct IO_STATUS_BLOCK {
 
 typedef IO_STATUS_BLOCK* PIO_STATUS_BLOCK;
 
-enum KPROCESSOR_MODE {
+enum KPROCESSOR_MODE : char {
     KernelMode = 0,
     UserMode
 };
@@ -366,7 +366,13 @@ typedef struct _KAPC {
     CCHAR ApcStateIndex;                
     KPROCESSOR_MODE ApcMode;            
     BOOLEAN Inserted;                   
-} KAPC, *PKAPC, *PRKAPC;     
+} KAPC, *PKAPC, *PRKAPC;    
+
+typedef struct _KDEVICE_QUEUE_ENTRY {
+    LIST_ENTRY DeviceListEntry;
+    ULONG SortKey;
+    BOOLEAN Inserted;
+} KDEVICE_QUEUE_ENTRY, * PKDEVICE_QUEUE_ENTRY, * PRKDEVICE_QUEUE_ENTRY;
 
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
     short Type;
@@ -548,7 +554,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
                 // queue the IRP to the device driver device queue.
                 //
 
-                // KDEVICE_QUEUE_ENTRY DeviceQueueEntry;
+                 KDEVICE_QUEUE_ENTRY DeviceQueueEntry;
 
                 struct {
 
