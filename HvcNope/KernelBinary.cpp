@@ -86,6 +86,7 @@ std::optional<kAddress> KernelBinary::ResolveExport(const char* ExportName) cons
 		return std::nullopt;
 	}
 
+	LOG_DEBUG( "Export %s rva 0x%llx", ExportName, size_t(localExportAddress) - size_t(m_MappedKernel) );
 	return MappedToKernel(localExportAddress);
 }
 
@@ -127,6 +128,12 @@ optional<kAddress> KernelBinary::FindSignature(Sig::Signature_t Signature, Dword
 		return MappedToKernel(occurrence.value());
 	}
 	return std::nullopt;
+}
+
+std::optional<kAddress> KernelBinary::FindSignature( std::vector<Sig::SigByte>& Signature, Dword Flags ) const
+{
+	Sig::Signature_t sig = Sig::Signature_t(&Signature[0], Signature.size());
+	return FindSignature( sig, Flags );
 }
 
 void KernelBinary::ForEveryCodeSignatureOccurrence(

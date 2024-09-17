@@ -25,6 +25,8 @@ public:
 
 	std::optional<kAddress> FindSignature(Sig::Signature_t Signature, Dword Flags = InCode | InRdata) const;
 
+	std::optional<kAddress> FindSignature(std::vector<Sig::SigByte>& Signature, Dword Flags = InCode | InRdata) const;
+
 	std::optional<const Byte*> FindSignatureInBinary(
 		Sig::Signature_t Signature,
 		Dword Flags = InCode | InRdata,
