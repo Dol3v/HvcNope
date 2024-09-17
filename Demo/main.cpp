@@ -70,14 +70,7 @@ bool RunTestUsermodeIo(std::vector<BYTE>& Signature)
         return false;
     }
 
-    // Wait for defender to delete the file
-    Sleep(100);
-
-    if (FileExists(DetectableFileName)) {
-        std::cerr << "[-] Test failed - defender didn't delete the file" << std::endl;;
-    } else {
-        std::cout << "[+] Defender deleted the file!" << std::endl;
-    }
+    std::cout << "[!] Written usermode file - defender should be angry:)" << std::endl;
 
     CloseHandle(maliciousFile);
     return TRUE;    
@@ -239,52 +232,8 @@ bool RunTestKernelIo(std::vector<BYTE>& Signature)
     }
 
     std::cout << "[+] Aaaand defender didn't do anything about it" << std::endl;
-    std::cout << "[*] Enter any key to directly open the file using WinAPI." << std::endl;
-    std::cout << "If everything went right, defender will be very angry :)" << std::endl;
-
-    char junk;
-    std::cin >> junk;
-
-    CloseHandle(hMaliciousFile);
-
-    // open it again:)
-    hMaliciousFile = CreateFileA(
-        UndetectableFileName,
-        GENERIC_READ | GENERIC_WRITE,
-        0,
-        NULL,
-        OPEN_ALWAYS, 
-        FILE_ATTRIBUTE_NORMAL,
-        0
-    );
-
-    if (hMaliciousFile == INVALID_HANDLE_VALUE) {
-        std::cout << "[+] Failed at open! le=" << GetLastError() << std::endl;
-        return true;
-    }
-
-    // still here? let's try to read from it
-
-    char buf[4];
-    DWORD readBytes = 0;
-
-    if (!ReadFile(hMaliciousFile, buf, sizeof(buf), &readBytes, nullptr)) 
-    {
-        std::cout << "[+] Failed at read! le=" << GetLastError() << std::endl;
-        return true;
-    }
-
-    // huh, weird. Let's wait a bit more just to be sure
-    std::cout << "[*] Successfully read bytes from file, let's wait a bit" << std::endl;
-    Sleep(300);
-
-    if (!FileExists(UndetectableFileName)) {
-        std::cout << "[+] File was deleted after read:)" << std::endl;
-        return true;
-    }
-
-    std::cerr << "[-] Something is off, try opening with notepad to be sure" << std::endl;
-    return false;
+    std::cout << "Feel free to open the test file, it won't be deleted soon:)" << std::endl;
+    return true;
 }
 
 int main() 

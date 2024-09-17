@@ -307,13 +307,13 @@ int main()
     }
 
 
-    //bool succeeded = RunTestUsermodeIo( eicar );
-    //if (!succeeded) {
-    //    std::cerr << "[-] Failed usermode test" << std::endl;
-    //    return 1;
-    //}
+    bool succeeded = RunTestUsermodeIo( eicar );
+    if (!succeeded) {
+        std::cerr << "[-] Failed usermode test" << std::endl;
+        return 1;
+    }
 
-    bool succeeded = RunTestKernelIo( eicar );
+    succeeded = RunTestKernelIo( eicar );
     if (!succeeded) {
         std::cerr << "[-] Failed kernel test" << std::endl;
         return 1;
